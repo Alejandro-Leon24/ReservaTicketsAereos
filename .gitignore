@@ -1,0 +1,12 @@
+# NetBeans build output
+build/
+dist/
+nbproject/private/
+
+# Compiled class files
+*.class
+
+# OS / Editor artifacts
+.DS_Store
+Thumbs.db
+*.bak
