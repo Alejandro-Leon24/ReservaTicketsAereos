@@ -103,33 +103,61 @@ public class ReservaTicketsAereos {
         // CASO 4: HILOS, VENTANILLAS Y COLA DE ESPERA (Jeremy Mero)
         // ------------------------------------------------------------------
         System.out.println("---------------------------------------------------------------");
-        System.out.println(">>> CASO 4: 3 VENTANILLAS CONCURRENTES CONSUMIENDO COLA DE ESPERA");
-        Avion avionGeneral = new Avion();
-        ReservaSegura gestorGeneralSeguro = new ReservaSegura(avionGeneral);
-        ReservaSinControl gestorGeneralInseguro = new ReservaSinControl(avionGeneral);
-        GestionReservas gestionGeneral = new GestionReservas(avionGeneral);
-        ColaEspera colaGeneral = new ColaEspera(30);
+        System.out.println(">>> CASO 4: HILOS, VENTANILLAS Y ASIGNACION AUTOMATICA (Jeremy Mero)");
+        System.out.println("Demostracion de: 3 ventanillas concurrentes, bloqueo en espera (wait)");
+        System.out.println("y reasignacion automatica al liberarse el asiento (notifyAll).\n");
 
-        // Instanciar 3 ventanillas concurrentes
-        Ventanilla v1 = new Ventanilla("Ventanilla-1", colaGeneral, gestorGeneralSeguro);
-        Ventanilla v2 = new Ventanilla("Ventanilla-2", colaGeneral, gestorGeneralSeguro);
-        Ventanilla v3 = new Ventanilla("Ventanilla-3", colaGeneral, gestorGeneralSeguro);
+        Avion avionJeremy = new Avion();
+        ReservaSegura gestorSeguroJeremy = new ReservaSegura(avionJeremy);
+        ReservaSinControl gestorInseguroJeremy = new ReservaSinControl(avionJeremy);
+        GestionReservas gestionJeremy = new GestionReservas(avionJeremy);
+        ColaEspera colaJeremy = new ColaEspera(30);
 
-        Thread tv1 = new Thread(v1);
-        Thread tv2 = new Thread(v2);
-        Thread tv3 = new Thread(v3);
+        Ventanilla v1 = new Ventanilla("Ventanilla-1", gestorSeguroJeremy, gestorInseguroJeremy, gestionJeremy, colaJeremy);
+        Ventanilla v2 = new Ventanilla("Ventanilla-2", gestorSeguroJeremy, gestorInseguroJeremy, gestionJeremy, colaJeremy);
+        Ventanilla v3 = new Ventanilla("Ventanilla-3", gestorSeguroJeremy, gestorInseguroJeremy, gestionJeremy, colaJeremy);
 
-        tv1.start();
-        tv2.start();
-        tv3.start();
+        // 4.1: Ventanilla-1 reserva el Asiento 2 para "Usuario A"
+        System.out.println("-- Paso 4.1: Ventanilla-1 aparta el Asiento #2 para 'Usuario A' --");
+        v1.procesarReserva(2, "Usuario A", true);
 
-        // Encolar algunas reservas iniciales de prueba
-        colaGeneral.agregarCliente(new SolicitudReserva("Laura Paez", 1));
-        colaGeneral.agregarCliente(new SolicitudReserva("David Ruiz", 2));
-        colaGeneral.agregarCliente(new SolicitudReserva("Elena Moran", 3));
+        // 4.2: Ventanilla-2 intenta en hilo paralelo reservar el mismo Asiento 2 para "Usuario B"
+        // Como esta ocupado, se bloquea y entra a la ColaEspera
+        System.out.println("\n-- Paso 4.2: Ventanilla-2 solicita Asiento #2 (quedara bloqueada en espera) --");
+        Thread hiloV2 = new Thread(() -> {
+            v2.procesarReserva(2, "Usuario B", true);
+        });
+        hiloV2.start();
 
+        // Breve pausa para asegurar que el hilo de Ventanilla-2 entre a la cola y se suspenda con wait()
+        try {
+            Thread.sleep(600);
+        } catch (InterruptedException ignored) {}
+
+        System.out.println("\nEstado actual de la Lista de Espera:");
+        for (String item : colaJeremy.getListaEsperaFormateada()) {
+            System.out.println("  " + item);
+        }
+
+        // 4.3: Ventanilla-1 cancela/elimina su reserva del Asiento 2
+        System.out.println("\n-- Paso 4.3: Ventanilla-1 libera el Asiento #2 --");
+        v1.procesarEliminacion(2, "Usuario A");
+
+        // Esperar a que el hilo de Ventanilla-2 despierte y finalice
+        try {
+            hiloV2.join();
+        } catch (InterruptedException ignored) {}
+
+        System.out.println("\n[RESUMEN CASO 4 - HILOS Y COLA]");
+        System.out.printf("Titular final en Asiento #2: '%s' (Asignado automaticamente sin intervencion manual)\n",
+                avionJeremy.getAsiento(2).getCliente());
+        System.out.printf("Clientes restantes en cola de espera: %d\n\n", colaJeremy.getTotalEnEspera());
+
+        // ------------------------------------------------------------------
+        // CASO 5: INTEGRACION GENERAL Y VISTA (Jhon Molina / Nohelya Monar)
+        // ------------------------------------------------------------------
         System.out.println("---------------------------------------------------------------");
-        System.out.println(">>> CASO 5: LANZANDO INTERFAZ GRAFICA SWING (Nohelya Monar)");
+        System.out.println(">>> CASO 5: LANZANDO INTERFAZ GRAFICA SWING (Nohelya Monar / Jhon Molina)");
         System.out.println("===============================================================");
 
         // Iniciar interfaz grafica Swing con su propio avion e instancias limpias (sin hilos previos)

@@ -1,114 +1,123 @@
 package reservaticketsaereos.modelo;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 /**
- * Modulo: Cola de espera sincronizada
+ * Modulo: Cola de espera sincronizada por asiento
  * Responsable: Mero Araujo Jeremy Joao
  * 
- * Estructura concurrente basada en el patron Productor-Consumidor.
- * - Mantiene el orden estricto de llegada (FIFO).
- * - Utiliza wait() y notifyAll() para coordinar los hilos de las ventanillas.
- * - Evita bloqueos indefinidos mediante timeouts configurables.
+ * Gestiona el bloqueo y espera de hilos cuando un asiento solicitado ya esta ocupado.
+ * Implementa:
+ * - Registro ordenado (FIFO) de solicitudes por cada numero de asiento.
+ * - Bloqueo coordinado mediante wait().
+ * - Despertar y asignacion automatica al liberarse el asiento con notifyAll().
  */
 public class ColaEspera {
 
-    private final Queue<SolicitudReserva> cola;
-    private final int capacidadMaxima;
-    private boolean cerrada;
+    // Mapa ordenado: Asiento -> Cola de solicitudes en espera para ese asiento
+    private final Map<Integer, Queue<SolicitudReserva>> colaPorAsiento;
+    private final List<Runnable> listenersCambio;
 
-    public ColaEspera(int capacidadMaxima) {
-        this.cola = new LinkedList<>();
-        this.capacidadMaxima = capacidadMaxima;
-        this.cerrada = false;
+    public ColaEspera(int capacidadIgnorada) {
+        this.colaPorAsiento = new LinkedHashMap<>();
+        this.listenersCambio = new ArrayList<>();
     }
 
     public ColaEspera() {
-        this(50); // Capacidad por defecto
+        this(50);
     }
 
     /**
-     * Encola un nuevo cliente. Notifica a las ventanillas dormidas.
+     * Registra un cliente en la cola de espera de un asiento especifico.
      */
-    public synchronized boolean agregarCliente(SolicitudReserva solicitud) {
-        if (cerrada) {
-            return false;
-        }
-
-        while (cola.size() >= capacidadMaxima) {
-            try {
-                wait(); // Espera si la cola esta llena
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-
-        cola.offer(solicitud);
-        System.out.printf("[COLA] Llega cliente: %s (En espera: %d)\n", solicitud, cola.size());
-        notifyAll(); // Despierta a las ventanillas que esperan clientes
-        return true;
+    public synchronized void agregarClienteAEspera(SolicitudReserva solicitud) {
+        int asiento = solicitud.getAsientoDeseado();
+        colaPorAsiento.putIfAbsent(asiento, new LinkedList<>());
+        colaPorAsiento.get(asiento).offer(solicitud);
+        System.out.printf("[COLA] Cliente '%s' en espera del Asiento #%d desde '%s'.\n",
+                solicitud.getCliente(), asiento, solicitud.getVentanilla());
+        notificarCambioVisual();
     }
 
     /**
-     * Extrae el siguiente cliente. Si la cola esta vacia, el hilo espera hasta timeoutMs.
+     * Bloquea el hilo actual hasta que el asiento solicitado sea liberado.
      */
-    public synchronized SolicitudReserva siguienteCliente(long timeoutMs) {
-        long tiempoLimite = System.currentTimeMillis() + timeoutMs;
-
-        while (cola.isEmpty() && !cerrada) {
-            long tiempoRestante = tiempoLimite - System.currentTimeMillis();
-            if (tiempoRestante <= 0) {
-                return null; // Timeout alcanzado, evita bloqueo indefinido
-            }
-            try {
-                wait(tiempoRestante);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
+    public synchronized void esperarLiberacionAsiento(int numeroAsiento) throws InterruptedException {
+        while (tieneClientesEnEspera(numeroAsiento)) {
+            wait(); // El hilo queda suspendido esperando que se libere el asiento
+            break;
         }
-
-        if (cola.isEmpty()) {
-            return null;
-        }
-
-        SolicitudReserva solicitud = cola.poll();
-        notifyAll(); // Notifica por si habia productores esperando espacio
-        return solicitud;
     }
 
     /**
-     * Notifica a todos los hilos en espera cuando se libera un asiento.
+     * Cuando se elimina una reservacion o se libera un asiento, extrae al primer cliente
+     * que estaba esperando por ese asiento y despierta a los hilos con notifyAll().
+     * 
+     * @param numeroAsiento Asiento que acaba de quedar libre
+     * @return El cliente en espera que tiene derecho al asiento, o null si nadie esperaba
      */
-    public synchronized void notificarAsientoLiberado() {
-        System.out.println("[COLA] Notificacion general: Se ha liberado un asiento.");
+    public synchronized SolicitudReserva notificarAsientoLiberado(int numeroAsiento) {
+        Queue<SolicitudReserva> cola = colaPorAsiento.get(numeroAsiento);
+        if (cola != null && !cola.isEmpty()) {
+            SolicitudReserva siguiente = cola.poll();
+            if (cola.isEmpty()) {
+                colaPorAsiento.remove(numeroAsiento);
+            }
+            System.out.printf("[COLA] Asiento #%d liberado. Asignando automaticamente a '%s' (orden de llegada).\n",
+                    numeroAsiento, siguiente.getCliente());
+            notifyAll(); // Despierta a los hilos esperando
+            notificarCambioVisual();
+            return siguiente;
+        }
         notifyAll();
+        return null;
+    }
+
+    public synchronized boolean tieneClientesEnEspera(int numeroAsiento) {
+        Queue<SolicitudReserva> cola = colaPorAsiento.get(numeroAsiento);
+        return cola != null && !cola.isEmpty();
+    }
+
+    public synchronized int getTotalEnEspera() {
+        int total = 0;
+        for (Queue<SolicitudReserva> q : colaPorAsiento.values()) {
+            total += q.size();
+        }
+        return total;
     }
 
     /**
-     * Cierra la cola al finalizar la jornada.
+     * Genera la lista formateada para mostrar en la interfaz grafica:
+     * Asiento X
+     * Usuario Y
      */
-    public synchronized void cerrar() {
-        this.cerrada = true;
-        notifyAll();
+    public synchronized List<String> getListaEsperaFormateada() {
+        List<String> items = new ArrayList<>();
+        for (Map.Entry<Integer, Queue<SolicitudReserva>> entry : colaPorAsiento.entrySet()) {
+            int numAsiento = entry.getKey();
+            items.add("Asiento " + numAsiento);
+            for (SolicitudReserva sol : entry.getValue()) {
+                items.add("  " + sol.getCliente() + " (" + sol.getVentanilla() + ")");
+            }
+        }
+        return items;
     }
 
-    public synchronized boolean estaVacia() {
-        return cola.isEmpty();
+    public synchronized void registrarListener(Runnable listener) {
+        listenersCambio.add(listener);
     }
 
-    public synchronized int getTamano() {
-        return cola.size();
-    }
-
-    /**
-     * Retorna una copia de la lista en espera para visualizacion en la GUI.
-     */
-    public synchronized List<SolicitudReserva> getListaEspera() {
-        return new ArrayList<>(cola);
+    private void notificarCambioVisual() {
+        for (Runnable r : listenersCambio) {
+            try {
+                r.run();
+            } catch (Exception ignored) {}
+        }
     }
 }

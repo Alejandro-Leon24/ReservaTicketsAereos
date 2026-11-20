@@ -33,6 +33,7 @@ import javax.swing.table.DefaultTableModel;
 import reservaticketsaereos.controlador.GestionReservas;
 import reservaticketsaereos.controlador.ReservaSegura;
 import reservaticketsaereos.controlador.ReservaSinControl;
+import reservaticketsaereos.controlador.Ventanilla;
 import reservaticketsaereos.modelo.Asiento;
 import reservaticketsaereos.modelo.Avion;
 import reservaticketsaereos.modelo.ColaEspera;
@@ -54,6 +55,11 @@ public class VentanaPrincipal extends JFrame {
     private final ReservaSinControl gestorInseguro;
     private final GestionReservas gestionReservas;
     private final ColaEspera colaEspera;
+
+    // Las 3 ventanillas como instancias controladoras de Jeremy Mero
+    private final Ventanilla v1;
+    private final Ventanilla v2;
+    private final Ventanilla v3;
 
     // Componentes de Ventanilla 1
     private JTextField txtAsientoV1;
@@ -107,8 +113,18 @@ public class VentanaPrincipal extends JFrame {
         this.gestionReservas = gestionReservas;
         this.colaEspera = colaEspera;
 
+        // Inicializar las 3 ventanillas de Jeremy Mero conectadas al sistema
+        this.v1 = new Ventanilla("Ventanilla 1", gestorSeguro, gestorInseguro, gestionReservas, colaEspera);
+        this.v2 = new Ventanilla("Ventanilla 2", gestorSeguro, gestorInseguro, gestionReservas, colaEspera);
+        this.v3 = new Ventanilla("Ventanilla 3", gestorSeguro, gestorInseguro, gestionReservas, colaEspera);
+        this.v1.setLogger(this::agregarLog);
+        this.v2.setLogger(this::agregarLog);
+        this.v3.setLogger(this::agregarLog);
+        this.colaEspera.registrarListener(this::actualizarColaVisual);
+
         initComponents();
         actualizarMapaAvion();
+        actualizarColaVisual();
         agregarClientesIniciales();
     }
 
@@ -152,17 +168,17 @@ public class VentanaPrincipal extends JFrame {
         // Ventanilla 1
         txtAsientoV1 = new JTextField("2");
         txtClienteV1 = new JTextField("Usuario A");
-        panelFila.add(crearCajaVentanilla("Ventanilla 1", txtAsientoV1, txtClienteV1, 1));
+        panelFila.add(crearCajaVentanilla("Ventanilla 1", txtAsientoV1, txtClienteV1, v1, 1));
 
         // Ventanilla 2
         txtAsientoV2 = new JTextField("2");
         txtClienteV2 = new JTextField("Usuario B");
-        panelFila.add(crearCajaVentanilla("Ventanilla 2", txtAsientoV2, txtClienteV2, 2));
+        panelFila.add(crearCajaVentanilla("Ventanilla 2", txtAsientoV2, txtClienteV2, v2, 2));
 
         // Ventanilla 3
         txtAsientoV3 = new JTextField("2");
         txtClienteV3 = new JTextField("Usuario C");
-        panelFila.add(crearCajaVentanilla("Ventanilla 3", txtAsientoV3, txtClienteV3, 3));
+        panelFila.add(crearCajaVentanilla("Ventanilla 3", txtAsientoV3, txtClienteV3, v3, 3));
 
         // Caja 'RESERVAR ASIENTO' -> Simular concurrencia
         JPanel panelSimular = new JPanel(new BorderLayout(5, 10));
@@ -194,7 +210,7 @@ public class VentanaPrincipal extends JFrame {
         return panelFila;
     }
 
-    private JPanel crearCajaVentanilla(String titulo, JTextField txtAsiento, JTextField txtCliente, int numVentanilla) {
+    private JPanel crearCajaVentanilla(String titulo, JTextField txtAsiento, JTextField txtCliente, Ventanilla vent, int numVentanilla) {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
         panel.setBorder(BorderFactory.createLineBorder(new Color(212, 172, 13), 1));
 
@@ -244,10 +260,9 @@ public class VentanaPrincipal extends JFrame {
         estilizarBotonAzul(btnEliminar);
         estilizarBotonAzul(btnCambiar);
 
-        final String idVent = "Ventanilla " + numVentanilla;
-        btnReservar.addActionListener(e -> operarReserva(txtAsiento, txtCliente, idVent));
-        btnEliminar.addActionListener(e -> operarEliminacion(txtAsiento, txtCliente, idVent));
-        btnCambiar.addActionListener(e -> operarCambio(txtAsiento, txtCliente, idVent));
+        btnReservar.addActionListener(e -> operarReserva(txtAsiento, txtCliente, vent));
+        btnEliminar.addActionListener(e -> operarEliminacion(txtAsiento, txtCliente, vent));
+        btnCambiar.addActionListener(e -> operarCambio(txtAsiento, txtCliente, vent));
 
         panelBotones.add(btnReservar);
         panelBotones.add(btnEliminar);
@@ -571,6 +586,14 @@ public class VentanaPrincipal extends JFrame {
         agregarLog("[CLIENTES] Cliente registrado: " + nombre + " (CI: " + cedula + ")");
     }
 
+    private int parseAsiento(JTextField txt) {
+        try {
+            return Integer.parseInt(txt.getText().trim());
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
     /**
      * DISPARADOR PRINCIPAL: Ejecuta las 3 ventanillas simultaneamente como hilos concurrentes.
      */
@@ -581,90 +604,76 @@ public class VentanaPrincipal extends JFrame {
         agregarLog("Modo de ejecucion: " + (modoSeguro ? "EXCLUSION MUTUA (Seguro)" : "SIN EXCLUSION MUTUA (Inseguro)"));
         agregarLog("==============================================================");
 
-        Thread t1 = new Thread(() -> procesarVentanilla(txtAsientoV1.getText(), txtClienteV1.getText(), "Ventanilla 1", modoSeguro));
-        Thread t2 = new Thread(() -> procesarVentanilla(txtAsientoV2.getText(), txtClienteV2.getText(), "Ventanilla 2", modoSeguro));
-        Thread t3 = new Thread(() -> procesarVentanilla(txtAsientoV3.getText(), txtClienteV3.getText(), "Ventanilla 3", modoSeguro));
+        int a1 = parseAsiento(txtAsientoV1);
+        int a2 = parseAsiento(txtAsientoV2);
+        int a3 = parseAsiento(txtAsientoV3);
+        String c1 = txtClienteV1.getText().trim();
+        String c2 = txtClienteV2.getText().trim();
+        String c3 = txtClienteV3.getText().trim();
 
-        // Inician exactamente al mismo tiempo
+        Thread t1 = new Thread(() -> {
+            v1.procesarReserva(a1, c1, modoSeguro);
+            SwingUtilities.invokeLater(this::actualizarMapaAvion);
+        });
+        Thread t2 = new Thread(() -> {
+            v2.procesarReserva(a2, c2, modoSeguro);
+            SwingUtilities.invokeLater(this::actualizarMapaAvion);
+        });
+        Thread t3 = new Thread(() -> {
+            v3.procesarReserva(a3, c3, modoSeguro);
+            SwingUtilities.invokeLater(this::actualizarMapaAvion);
+        });
+
         t1.start();
         t2.start();
         t3.start();
     }
 
-    private void procesarVentanilla(String asientoStr, String cliente, String ventanilla, boolean seguro) {
-        if (asientoStr.trim().isEmpty() || cliente.trim().isEmpty()) {
-            agregarLog("[" + ventanilla + "] Operacion cancelada: faltan datos.");
-            return;
-        }
-
-        try {
-            int numAsiento = Integer.parseInt(asientoStr.trim());
-
-            // Simular retardo aleatorio entre 1 y 3 segundos segun el diagrama
-            long retardo = (long) (Math.random() * 2000 + 1000);
-            agregarLog(String.format("[%s] Procesando solicitud del Asiento #%d para '%s' (sleep %d ms)...",
-                    ventanilla, numAsiento, cliente, retardo));
-            Thread.sleep(retardo);
-
-            boolean exito;
-            if (seguro) {
-                // Modo Seguro con Exclusión Mutua
-                exito = gestorSeguro.reservar(numAsiento, cliente, ventanilla);
-                if (!exito) {
-                    // Si no se pudo porque estaba ocupado, pasa a la Lista de Espera del asiento
-                    agregarAListaEspera("Asiento " + numAsiento, cliente + " (" + ventanilla + ")");
-                    agregarLog(String.format("[%s] Asiento #%d ocupado. '%s' entra a la Lista de Espera.",
-                            ventanilla, numAsiento, cliente));
-                }
-            } else {
-                // Modo Inseguro: Provoca colisiones y condiciones de carrera
-                exito = gestorInseguro.reservar(numAsiento, cliente, ventanilla);
-            }
-
-            SwingUtilities.invokeLater(this::actualizarMapaAvion);
-        } catch (NumberFormatException e) {
-            agregarLog("[" + ventanilla + "] Error: Asiento no valido.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private void operarReserva(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
-        boolean modoSeguro = rbExclusionMutua.isSelected();
-        new Thread(() -> procesarVentanilla(txtAsiento.getText(), txtCliente.getText(), ventanilla, modoSeguro)).start();
-    }
-
-    private void operarEliminacion(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
+    private void operarReserva(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
         String asientoStr = txtAsiento.getText().trim();
         String cliente = txtCliente.getText().trim();
 
         if (asientoStr.isEmpty() || cliente.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Indique el asiento y el cliente para eliminar la reserva.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Complete el asiento y cliente.", "Atencion", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         try {
-            int numAsiento = Integer.parseInt(asientoStr);
+            int num = Integer.parseInt(asientoStr);
+            boolean modoSeguro = rbExclusionMutua.isSelected();
             new Thread(() -> {
-                boolean exito = gestionReservas.cancelarReserva(numAsiento, cliente, ventanilla);
-                agregarLog(String.format("[%s] Eliminacion Asiento #%d: %s", ventanilla, numAsiento, exito ? "EXITOSA" : "DENEGADA"));
-
-                if (exito) {
-                    // Si habia alguien esperando por este asiento en la lista de espera, asignarselo automaticamente
-                    verificarYAsignarListaEspera(numAsiento);
-                }
-
+                vent.procesarReserva(num, cliente, modoSeguro);
                 SwingUtilities.invokeLater(this::actualizarMapaAvion);
             }).start();
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Numero de asiento no valido.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Asiento invalido (1-30).", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void operarCambio(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
+    private void operarEliminacion(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
+        String asientoStr = txtAsiento.getText().trim();
+        String cliente = txtCliente.getText().trim();
+
+        if (asientoStr.isEmpty() || cliente.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Indique el asiento y cliente para eliminar.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        try {
+            int num = Integer.parseInt(asientoStr);
+            new Thread(() -> {
+                vent.procesarEliminacion(num, cliente);
+                SwingUtilities.invokeLater(this::actualizarMapaAvion);
+            }).start();
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Asiento invalido.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void operarCambio(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
         String actualStr = txtAsiento.getText().trim();
         String cliente = txtCliente.getText().trim();
-        String nuevoStr = JOptionPane.showInputDialog(this, "Ingrese el nuevo asiento al que desea cambiar a '" + cliente + "':");
+        String nuevoStr = JOptionPane.showInputDialog(this, "Ingrese el nuevo asiento para '" + cliente + "':");
 
         if (nuevoStr == null || nuevoStr.trim().isEmpty()) {
             return;
@@ -673,48 +682,22 @@ public class VentanaPrincipal extends JFrame {
         try {
             int actual = Integer.parseInt(actualStr);
             int nuevo = Integer.parseInt(nuevoStr.trim());
-
             new Thread(() -> {
-                boolean exito = gestionReservas.cambiarAsiento(actual, nuevo, cliente, ventanilla);
-                agregarLog(String.format("[%s] Cambio Asiento #%d -> #%d para '%s': %s",
-                        ventanilla, actual, nuevo, cliente, exito ? "EXITOSO" : "FALLIDO"));
-                if (exito) {
-                    verificarYAsignarListaEspera(actual);
-                }
+                vent.procesarCambio(actual, nuevo, cliente);
                 SwingUtilities.invokeLater(this::actualizarMapaAvion);
             }).start();
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Numero de asiento no valido.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Numero de asiento invalido.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private synchronized void agregarAListaEspera(String etiquetaAsiento, String cliente) {
+    public void actualizarColaVisual() {
         SwingUtilities.invokeLater(() -> {
-            modeloListaEspera.addElement("--- " + etiquetaAsiento + " ---");
-            modeloListaEspera.addElement(cliente);
-        });
-    }
-
-    private synchronized void verificarYAsignarListaEspera(int numAsientoLiberado) {
-        SwingUtilities.invokeLater(() -> {
-            String etiqueta = "--- Asiento " + numAsientoLiberado + " ---";
-            for (int i = 0; i < modeloListaEspera.size(); i++) {
-                if (modeloListaEspera.get(i).equals(etiqueta) && (i + 1) < modeloListaEspera.size()) {
-                    String clienteEsperando = modeloListaEspera.get(i + 1);
-                    // Limpiar la referencia de ventanilla si la tiene
-                    String nombrePuro = clienteEsperando.split(" \\(")[0];
-
-                    // Asignacion automatica
-                    gestorSeguro.reservar(numAsientoLiberado, nombrePuro, "AutoAsignacion");
-                    agregarLog(String.format(">>> [ASIGNACION AUTOMATICA] Asiento #%d liberado fue asignado a '%s' de la Lista de Espera.",
-                            numAsientoLiberado, nombrePuro));
-
-                    modeloListaEspera.remove(i + 1);
-                    modeloListaEspera.remove(i);
-                    actualizarMapaAvion();
-                    break;
-                }
+            modeloListaEspera.clear();
+            for (String item : colaEspera.getListaEsperaFormateada()) {
+                modeloListaEspera.addElement(item);
             }
+            actualizarMapaAvion();
         });
     }
 
