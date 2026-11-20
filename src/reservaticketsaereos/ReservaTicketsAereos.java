@@ -1,6 +1,7 @@
 package reservaticketsaereos;
 
 import java.util.List;
+import javax.swing.SwingUtilities;
 import reservaticketsaereos.controlador.GestionReservas;
 import reservaticketsaereos.controlador.ReservaSegura;
 import reservaticketsaereos.controlador.ReservaSinControl;
@@ -8,6 +9,7 @@ import reservaticketsaereos.controlador.Ventanilla;
 import reservaticketsaereos.modelo.Avion;
 import reservaticketsaereos.modelo.ColaEspera;
 import reservaticketsaereos.modelo.SolicitudReserva;
+import reservaticketsaereos.vista.VentanaPrincipal;
 
 public class ReservaTicketsAereos {
 
@@ -102,14 +104,16 @@ public class ReservaTicketsAereos {
         // ------------------------------------------------------------------
         System.out.println("---------------------------------------------------------------");
         System.out.println(">>> CASO 4: 3 VENTANILLAS CONCURRENTES CONSUMIENDO COLA DE ESPERA");
-        Avion avionVentanillas = new Avion();
-        ReservaSegura gestorVentanillas = new ReservaSegura(avionVentanillas);
-        ColaEspera cola = new ColaEspera(20);
+        Avion avionGeneral = new Avion();
+        ReservaSegura gestorGeneralSeguro = new ReservaSegura(avionGeneral);
+        ReservaSinControl gestorGeneralInseguro = new ReservaSinControl(avionGeneral);
+        GestionReservas gestionGeneral = new GestionReservas(avionGeneral);
+        ColaEspera colaGeneral = new ColaEspera(30);
 
         // Instanciar 3 ventanillas concurrentes
-        Ventanilla v1 = new Ventanilla("Ventanilla-A", cola, gestorVentanillas);
-        Ventanilla v2 = new Ventanilla("Ventanilla-B", cola, gestorVentanillas);
-        Ventanilla v3 = new Ventanilla("Ventanilla-C", cola, gestorVentanillas);
+        Ventanilla v1 = new Ventanilla("Ventanilla-1", colaGeneral, gestorGeneralSeguro);
+        Ventanilla v2 = new Ventanilla("Ventanilla-2", colaGeneral, gestorGeneralSeguro);
+        Ventanilla v3 = new Ventanilla("Ventanilla-3", colaGeneral, gestorGeneralSeguro);
 
         Thread tv1 = new Thread(v1);
         Thread tv2 = new Thread(v2);
@@ -119,41 +123,21 @@ public class ReservaTicketsAereos {
         tv2.start();
         tv3.start();
 
-        // Encolamos varios clientes en orden de llegada
-        cola.agregarCliente(new SolicitudReserva("Laura Paez", 1));
-        cola.agregarCliente(new SolicitudReserva("David Ruiz", 2));
-        cola.agregarCliente(new SolicitudReserva("Elena Moran", 1)); // competira por el #1
-        cola.agregarCliente(new SolicitudReserva("Gabriel Soto", 3));
-        cola.agregarCliente(new SolicitudReserva("Patricia Vera", 0)); // cualquiera disponible
-        cola.agregarCliente(new SolicitudReserva("Fernando Paz", 0)); // cualquiera disponible
+        // Encolar algunas reservas iniciales de prueba
+        colaGeneral.agregarCliente(new SolicitudReserva("Laura Paez", 1));
+        colaGeneral.agregarCliente(new SolicitudReserva("David Ruiz", 2));
+        colaGeneral.agregarCliente(new SolicitudReserva("Elena Moran", 3));
 
-        // Esperar a que las ventanillas procesen la cola
-        try {
-            Thread.sleep(1200);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        // Detener ventanillas
-        v1.detener();
-        v2.detener();
-        v3.detener();
-
-        try {
-            tv1.join();
-            tv2.join();
-            tv3.join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        System.out.println("\n[RESUMEN CASO 4 - HILOS Y COLA]");
-        System.out.printf("Atendidos por %s: %d\n", v1.getNombre(), v1.getClientesAtendidos());
-        System.out.printf("Atendidos por %s: %d\n", v2.getNombre(), v2.getClientesAtendidos());
-        System.out.printf("Atendidos por %s: %d\n", v3.getNombre(), v3.getClientesAtendidos());
-        System.out.printf("Clientes restantes en cola: %d\n", cola.getTamano());
-        System.out.printf("Total asientos ocupados en avion: %d / %d\n", 
-                avionVentanillas.getCantidadOcupados(), Avion.TOTAL_ASIENTOS);
+        System.out.println("---------------------------------------------------------------");
+        System.out.println(">>> CASO 5: LANZANDO INTERFAZ GRAFICA SWING (Nohelya Monar)");
         System.out.println("===============================================================");
+
+        // Iniciar interfaz grafica Swing en el hilo EDT (Event Dispatch Thread)
+        SwingUtilities.invokeLater(() -> {
+            VentanaPrincipal ventana = new VentanaPrincipal(
+                    avionGeneral, gestorGeneralSeguro, gestorGeneralInseguro,
+                    gestionGeneral, colaGeneral);
+            ventana.setVisible(true);
+        });
     }
 }
