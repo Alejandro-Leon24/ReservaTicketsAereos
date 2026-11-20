@@ -5,25 +5,31 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
+import java.awt.Insets;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
+import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.table.DefaultTableModel;
 import reservaticketsaereos.controlador.GestionReservas;
 import reservaticketsaereos.controlador.ReservaSegura;
 import reservaticketsaereos.controlador.ReservaSinControl;
@@ -36,10 +42,10 @@ import reservaticketsaereos.modelo.SolicitudReserva;
  * Modulo: Interfaz Grafica de Usuario (Java Swing)
  * Responsable: Monar Zambrano Nohelya Carolina
  * 
- * Ventana interactiva que permite:
- * - Visualizar la cuadricula de los 30 asientos y su estado (Libre / Ocupado).
- * - Ejecutar operaciones de reserva, cancelacion y cambio de forma asincrona sin congelar la GUI.
- * - Monitorear la cola de espera y el log de operaciones en tiempo real.
+ * Implementacion exacta segun el bosquejo oficial del docente:
+ * - Fila superior: 3 Ventanillas independientes (1, 2, 3) + Boton 'Simular concurrencia'.
+ * - Fila intermedia: Mapa del Avion con pasillo central (30 asientos), Lista de Espera y panel de Actividades (Exclusion Mutua).
+ * - Fila inferior: Registro de Clientes y Tabla de Clientes registrados (AVIANCA).
  */
 public class VentanaPrincipal extends JFrame {
 
@@ -49,24 +55,46 @@ public class VentanaPrincipal extends JFrame {
     private final GestionReservas gestionReservas;
     private final ColaEspera colaEspera;
 
-    // Componentes visuales
+    // Componentes de Ventanilla 1
+    private JTextField txtAsientoV1;
+    private JTextField txtClienteV1;
+
+    // Componentes de Ventanilla 2
+    private JTextField txtAsientoV2;
+    private JTextField txtClienteV2;
+
+    // Componentes de Ventanilla 3
+    private JTextField txtAsientoV3;
+    private JTextField txtClienteV3;
+
+    // Selector de Concurrencia (Actividades)
+    private JRadioButton rbExclusionMutua;
+    private JRadioButton rbSinExclusionMutua;
+
+    // Mapa de Asientos (Avion)
     private final JButton[] botonesAsientos = new JButton[Avion.TOTAL_ASIENTOS];
-    private JTextField txtCliente;
-    private JTextField txtAsiento;
-    private JTextField txtNuevoAsiento;
-    private JComboBox<String> cmbVentanilla;
-    private JComboBox<String> cmbModo;
-    private JLabel lblDisponibles;
-    private JLabel lblOcupados;
-    private JLabel lblColaSize;
-    private DefaultListModel<String> modeloCola;
-    private JList<String> listaCola;
+
+    // Lista de Espera
+    private DefaultListModel<String> modeloListaEspera;
+    private JList<String> listaEsperaVisual;
+
+    // Registro de Clientes y Tabla AVIANCA
+    private JTextField txtCedula;
+    private JTextField txtNombreCliente;
+    private DefaultTableModel modeloTablaClientes;
+    private JTable tablaClientes;
+    private int contadorClientes = 1;
+
+    // Consola / Log de actividades en tiempo real
     private JTextArea txtLog;
 
-    // Colores tematicos
-    private static final Color COLOR_LIBRE = new Color(46, 204, 113); // Verde
-    private static final Color COLOR_OCUPADO = new Color(231, 76, 60); // Rojo
-    private static final Color COLOR_FONDO = new Color(245, 247, 250);
+    // Estilos de color segun el diagrama
+    private static final Color COLOR_HEADER_VENTANILLA = new Color(254, 249, 231); // Amarillo suave
+    private static final Color COLOR_HEADER_AVION = new Color(245, 183, 177); // Rosado / Salmon suave
+    private static final Color COLOR_HEADER_AVIANCA = new Color(212, 230, 241); // Azul cielo
+    private static final Color COLOR_BOTON_AZUL = new Color(0, 102, 204);
+    private static final Color COLOR_ASIENTO_LIBRE = Color.WHITE;
+    private static final Color COLOR_ASIENTO_OCUPADO = new Color(212, 239, 223); // Verde suave con datos
 
     public VentanaPrincipal(Avion avion, ReservaSegura gestorSeguro, ReservaSinControl gestorInseguro,
                             GestionReservas gestionReservas, ColaEspera colaEspera) {
@@ -77,238 +105,474 @@ public class VentanaPrincipal extends JFrame {
         this.colaEspera = colaEspera;
 
         initComponents();
-        actualizarVistaAsientos();
-        actualizarEstadisticas();
+        actualizarMapaAvion();
+        agregarClientesIniciales();
     }
 
     private void initComponents() {
         setTitle("Sistema de Reserva de Tickets Aereos - Concurrencia");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1100, 720);
-        setMinimumSize(new Dimension(900, 600));
+        setSize(1180, 850);
+        setMinimumSize(new Dimension(1050, 750));
         setLocationRelativeTo(null);
-        getContentPane().setBackground(COLOR_FONDO);
-        setLayout(new BorderLayout(10, 10));
+        setLayout(new BorderLayout(8, 8));
 
-        // 1. BANNER SUPERIOR DE ESTADO
-        add(crearPanelSuperior(), BorderLayout.NORTH);
+        // PANEL CONTENEDOR PRINCIPAL VERTICAL
+        JPanel panelPrincipal = new JPanel();
+        panelPrincipal.setLayout(new BoxLayout(panelPrincipal, BoxLayout.Y_AXIS));
+        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // 2. PANEL CENTRAL (Distribucion de Asientos + Panel Lateral de Operaciones)
-        JSplitPane splitCentral = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
-                crearPanelAsientos(), crearPanelOperaciones());
-        splitCentral.setResizeWeight(0.55);
-        splitCentral.setDividerLocation(580);
-        add(splitCentral, BorderLayout.CENTER);
+        // 1. FILA SUPERIOR: 3 VENTANILLAS + SIMULAR CONCURRENCIA
+        panelPrincipal.add(crearFilaSuperiorVentanillas());
+        panelPrincipal.add(Box.createVerticalStrut(10));
 
-        // 3. PANEL INFERIOR (Log de eventos)
-        add(crearPanelInferior(), BorderLayout.SOUTH);
+        // 2. FILA INTERMEDIA: AVION + LISTA DE ESPERA + ACTIVIDADES
+        panelPrincipal.add(crearFilaIntermedia());
+        panelPrincipal.add(Box.createVerticalStrut(10));
+
+        // 3. FILA INFERIOR: REGISTRAR CLIENTE + AVIANCA (CLIENTES)
+        panelPrincipal.add(crearFilaInferiorClientes());
+        panelPrincipal.add(Box.createVerticalStrut(10));
+
+        // 4. CONSOLA DE LOGS
+        panelPrincipal.add(crearPanelLog());
+
+        add(new JScrollPane(panelPrincipal), BorderLayout.CENTER);
     }
 
-    private JPanel crearPanelSuperior() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(41, 128, 185));
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 20, 12, 20));
+    // =========================================================================
+    // 1. FILA SUPERIOR: VENTANILLAS Y DISPARADOR CONCURRENTE
+    // =========================================================================
+    private JPanel crearFilaSuperiorVentanillas() {
+        JPanel panelFila = new JPanel(new GridLayout(1, 4, 12, 0));
 
-        JLabel titulo = new JLabel("Reserva de Tickets Aéreos - Gestión Concurrente");
-        titulo.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        titulo.setForeground(Color.WHITE);
+        // Ventanilla 1
+        txtAsientoV1 = new JTextField("2");
+        txtClienteV1 = new JTextField("Usuario A");
+        panelFila.add(crearCajaVentanilla("Ventanilla 1", txtAsientoV1, txtClienteV1, 1));
 
-        JPanel panelStats = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
-        panelStats.setOpaque(false);
+        // Ventanilla 2
+        txtAsientoV2 = new JTextField("2");
+        txtClienteV2 = new JTextField("Usuario B");
+        panelFila.add(crearCajaVentanilla("Ventanilla 2", txtAsientoV2, txtClienteV2, 2));
 
-        lblDisponibles = new JLabel("Libres: 30");
-        lblDisponibles.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblDisponibles.setForeground(new Color(230, 255, 230));
+        // Ventanilla 3
+        txtAsientoV3 = new JTextField("2");
+        txtClienteV3 = new JTextField("Usuario C");
+        panelFila.add(crearCajaVentanilla("Ventanilla 3", txtAsientoV3, txtClienteV3, 3));
 
-        lblOcupados = new JLabel("Ocupados: 0");
-        lblOcupados.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblOcupados.setForeground(new Color(255, 220, 220));
+        // Caja 'RESERVAR ASIENTO' -> Simular concurrencia
+        JPanel panelSimular = new JPanel(new BorderLayout(5, 10));
+        panelSimular.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.GRAY, 1),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
 
-        lblColaSize = new JLabel("En cola: 0");
-        lblColaSize.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblColaSize.setForeground(Color.WHITE);
+        JLabel lblTituloSimular = new JLabel("RESERVAR ASIENTO", SwingConstants.CENTER);
+        lblTituloSimular.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        panelSimular.add(lblTituloSimular, BorderLayout.NORTH);
 
-        panelStats.add(lblDisponibles);
-        panelStats.add(lblOcupados);
-        panelStats.add(lblColaSize);
+        JButton btnSimular = new JButton("Simular concurrencia");
+        btnSimular.setBackground(COLOR_BOTON_AZUL);
+        btnSimular.setForeground(Color.WHITE);
+        btnSimular.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        btnSimular.setFocusPainted(false);
+        btnSimular.addActionListener(e -> ejecutarSimulacionConcurrente());
 
-        panel.add(titulo, BorderLayout.WEST);
-        panel.add(panelStats, BorderLayout.EAST);
+        JPanel panelCentro = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        panelCentro.add(btnSimular);
+        panelSimular.add(panelCentro, BorderLayout.CENTER);
+
+        JLabel lblThreadInfo = new JLabel("<html><center>thread (1)<br>thread (2)<br>thread (3)<br>thread.run</center></html>", SwingConstants.CENTER);
+        lblThreadInfo.setFont(new Font("Consolas", Font.PLAIN, 11));
+        panelSimular.add(lblThreadInfo, BorderLayout.SOUTH);
+
+        panelFila.add(panelSimular);
+        return panelFila;
+    }
+
+    private JPanel crearCajaVentanilla(String titulo, JTextField txtAsiento, JTextField txtCliente, int numVentanilla) {
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createLineBorder(new Color(212, 172, 13), 1));
+
+        // Nube / Header simulacion sleep
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(COLOR_HEADER_VENTANILLA);
+        header.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+        JLabel lblNube = new JLabel("thread (sleep) 1 y 3 seg", SwingConstants.CENTER);
+        lblNube.setFont(new Font("Segoe UI", Font.ITALIC, 11));
+        JLabel lblTitulo = new JLabel(titulo, SwingConstants.CENTER);
+        lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 13));
+
+        header.add(lblNube, BorderLayout.NORTH);
+        header.add(lblTitulo, BorderLayout.CENTER);
+        panel.add(header, BorderLayout.NORTH);
+
+        // Campos: Asiento y Cliente
+        JPanel panelCampos = new JPanel(new GridLayout(2, 2, 4, 4));
+        panelCampos.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        panelCampos.add(new JLabel("Asiento:"));
+        panelCampos.add(txtAsiento);
+        panelCampos.add(new JLabel("Cliente:"));
+        panelCampos.add(txtCliente);
+        panel.add(panelCampos, BorderLayout.CENTER);
+
+        // Botonera de la ventanilla
+        JPanel panelBotones = new JPanel(new GridLayout(3, 1, 4, 4));
+        panelBotones.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+
+        JButton btnReservar = new JButton("Reservar asiento");
+        JButton btnEliminar = new JButton("Eliminar reservacion");
+        JButton btnCambiar = new JButton("Cambiar asiento");
+
+        estilizarBotonAzul(btnReservar);
+        estilizarBotonAzul(btnEliminar);
+        estilizarBotonAzul(btnCambiar);
+
+        final String idVent = "Ventanilla " + numVentanilla;
+        btnReservar.addActionListener(e -> operarReserva(txtAsiento, txtCliente, idVent));
+        btnEliminar.addActionListener(e -> operarEliminacion(txtAsiento, txtCliente, idVent));
+        btnCambiar.addActionListener(e -> operarCambio(txtAsiento, txtCliente, idVent));
+
+        panelBotones.add(btnReservar);
+        panelBotones.add(btnEliminar);
+        panelBotones.add(btnCambiar);
+        panel.add(panelBotones, BorderLayout.SOUTH);
+
         return panel;
     }
 
-    private JPanel crearPanelAsientos() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(10, 10, 10, 10),
-                BorderFactory.createTitledBorder("Mapa de Asientos del Avión (30 Asientos)")
-        ));
+    private void estilizarBotonAzul(JButton btn) {
+        btn.setBackground(COLOR_BOTON_AZUL);
+        btn.setForeground(Color.WHITE);
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        btn.setFocusPainted(false);
+    }
 
-        // Grilla estilo cabina de avion (6 filas x 5 columnas)
-        JPanel grid = new JPanel(new GridLayout(6, 5, 8, 8));
-        grid.setBackground(Color.WHITE);
-        grid.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    // =========================================================================
+    // 2. FILA INTERMEDIA: AVION + LISTA DE ESPERA + ACTIVIDADES
+    // =========================================================================
+    private JPanel crearFilaIntermedia() {
+        JPanel panelFila = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.insets = new Insets(0, 4, 0, 4);
 
-        for (int i = 0; i < Avion.TOTAL_ASIENTOS; i++) {
-            final int num = i + 1;
-            JButton btn = new JButton("#" + num);
-            btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-            btn.setFocusPainted(false);
-            btn.setBackground(COLOR_LIBRE);
-            btn.setForeground(Color.WHITE);
+        // 2.1 PANEL AVION (Con pasillo central)
+        gbc.gridx = 0;
+        gbc.weightx = 0.45;
+        gbc.weighty = 1.0;
+        panelFila.add(crearPanelAvion(), gbc);
 
-            // Al hacer clic en el asiento, se carga su numero en el campo de texto
-            btn.addActionListener(e -> {
-                txtAsiento.setText(String.valueOf(num));
-                Asiento a = avion.getAsiento(num);
-                if (a != null && a.isOcupado()) {
-                    txtCliente.setText(a.getCliente());
-                }
-            });
+        // 2.2 PANEL LISTA DE ESPERA
+        gbc.gridx = 1;
+        gbc.weightx = 0.30;
+        panelFila.add(crearPanelListaEspera(), gbc);
 
-            botonesAsientos[i] = btn;
-            grid.add(btn);
+        // 2.3 PANEL ACTIVIDADES (Exclusion Mutua)
+        gbc.gridx = 2;
+        gbc.weightx = 0.25;
+        panelFila.add(crearPanelActividades(), gbc);
+
+        return panelFila;
+    }
+
+    private JPanel crearPanelAvion() {
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+
+        JLabel lblHeader = new JLabel("AVION", SwingConstants.CENTER);
+        lblHeader.setOpaque(true);
+        lblHeader.setBackground(COLOR_HEADER_AVION);
+        lblHeader.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblHeader.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panel.add(lblHeader, BorderLayout.NORTH);
+
+        // Cuadricula con pasillo central: 6 filas de asientos.
+        // Columna 1 y 2 (Izquierda) | PASILLO | Columna 3, 4 y 5 (Derecha) -> 5 asientos por fila x 6 filas = 30 asientos
+        JPanel gridCabina = new JPanel(new GridLayout(6, 6, 6, 6));
+        gridCabina.setBackground(Color.WHITE);
+        gridCabina.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        int asientoIdx = 0;
+        for (int fila = 0; fila < 6; fila++) {
+            // Asientos lado izquierdo (2 asientos)
+            for (int colIzq = 0; colIzq < 2; colIzq++) {
+                JButton btn = crearBotonAsiento(asientoIdx + 1);
+                botonesAsientos[asientoIdx] = btn;
+                gridCabina.add(btn);
+                asientoIdx++;
+            }
+
+            // Pasillo central
+            JLabel lblPasillo = new JLabel("||", SwingConstants.CENTER);
+            lblPasillo.setForeground(Color.LIGHT_GRAY);
+            lblPasillo.setFont(new Font("Consolas", Font.BOLD, 12));
+            gridCabina.add(lblPasillo);
+
+            // Asientos lado derecho (3 asientos)
+            for (int colDer = 0; colDer < 3; colDer++) {
+                JButton btn = crearBotonAsiento(asientoIdx + 1);
+                botonesAsientos[asientoIdx] = btn;
+                gridCabina.add(btn);
+                asientoIdx++;
+            }
         }
 
-        panel.add(new JScrollPane(grid), BorderLayout.CENTER);
+        panel.add(gridCabina, BorderLayout.CENTER);
         return panel;
     }
 
-    private JPanel crearPanelOperaciones() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    private JButton crearBotonAsiento(int numAsiento) {
+        JButton btn = new JButton(String.valueOf(numAsiento));
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        btn.setBackground(COLOR_ASIENTO_LIBRE);
+        btn.setFocusPainted(false);
+        btn.setPreferredSize(new Dimension(50, 40));
+        btn.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
 
-        // Formulario
-        JPanel form = new JPanel(new GridLayout(5, 2, 8, 8));
-        form.setBorder(BorderFactory.createTitledBorder("Datos de la Solicitud"));
-
-        form.add(new JLabel("Cliente:"));
-        txtCliente = new JTextField();
-        form.add(txtCliente);
-
-        form.add(new JLabel("Asiento Solicitado (1-30):"));
-        txtAsiento = new JTextField();
-        form.add(txtAsiento);
-
-        form.add(new JLabel("Nuevo Asiento (Para cambio):"));
-        txtNuevoAsiento = new JTextField();
-        form.add(txtNuevoAsiento);
-
-        form.add(new JLabel("Ventanilla de Atención:"));
-        cmbVentanilla = new JComboBox<>(new String[]{"Ventanilla-1", "Ventanilla-2", "Ventanilla-3"});
-        form.add(cmbVentanilla);
-
-        form.add(new JLabel("Control de Concurrencia:"));
-        cmbModo = new JComboBox<>(new String[]{"Exclusión Mutua (Seguro)", "Sin Control (Inseguro)"});
-        form.add(cmbModo);
-
-        panel.add(form);
-        panel.add(Box.createVerticalStrut(10));
-
-        // Botonera de acciones
-        JPanel botonera = new JPanel(new GridLayout(2, 2, 8, 8));
-        JButton btnReservar = new JButton("Reservar Asiento");
-        JButton btnCancelar = new JButton("Cancelar Reserva");
-        JButton btnCambiar = new JButton("Cambiar Asiento");
-        JButton btnEncolar = new JButton("Poner en Cola");
-
-        btnReservar.setBackground(new Color(52, 152, 219));
-        btnReservar.setForeground(Color.WHITE);
-        btnCancelar.setBackground(new Color(230, 126, 34));
-        btnCancelar.setForeground(Color.WHITE);
-        btnCambiar.setBackground(new Color(155, 89, 182));
-        btnCambiar.setForeground(Color.WHITE);
-        btnEncolar.setBackground(new Color(52, 73, 94));
-        btnEncolar.setForeground(Color.WHITE);
-
-        btnReservar.addActionListener(e -> accionarReserva());
-        btnCancelar.addActionListener(e -> accionarCancelacion());
-        btnCambiar.addActionListener(e -> accionarCambio());
-        btnEncolar.addActionListener(e -> accionarEncolar());
-
-        botonera.add(btnReservar);
-        botonera.add(btnCancelar);
-        botonera.add(btnCambiar);
-        botonera.add(btnEncolar);
-
-        panel.add(botonera);
-        panel.add(Box.createVerticalStrut(10));
-
-        // Lista de Cola de Espera
-        JPanel panelCola = new JPanel(new BorderLayout());
-        panelCola.setBorder(BorderFactory.createTitledBorder("Cola de Espera (Orden de Llegada)"));
-        modeloCola = new DefaultListModel<>();
-        listaCola = new JList<>(modeloCola);
-        panelCola.add(new JScrollPane(listaCola), BorderLayout.CENTER);
-        panelCola.setPreferredSize(new Dimension(300, 160));
-
-        panel.add(panelCola);
-        return panel;
+        btn.addActionListener(e -> {
+            // Cargar en la primera ventanilla disponible
+            txtAsientoV1.setText(String.valueOf(numAsiento));
+            Asiento a = avion.getAsiento(numAsiento);
+            if (a != null && a.isOcupado()) {
+                txtClienteV1.setText(a.getCliente());
+            }
+        });
+        return btn;
     }
 
-    private JPanel crearPanelInferior() {
+    private JPanel crearPanelListaEspera() {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(0, 10, 10, 10),
-                BorderFactory.createTitledBorder("Log de Eventos y Concurrencia en Tiempo Real")
-        ));
-        panel.setPreferredSize(new Dimension(1000, 160));
+        panel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+
+        JLabel lblHeader = new JLabel("Lista de Espera", SwingConstants.CENTER);
+        lblHeader.setOpaque(true);
+        lblHeader.setBackground(new Color(234, 237, 237));
+        lblHeader.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblHeader.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panel.add(lblHeader, BorderLayout.NORTH);
+
+        modeloListaEspera = new DefaultListModel<>();
+        listaEsperaVisual = new JList<>(modeloListaEspera);
+        listaEsperaVisual.setFont(new Font("Consolas", Font.PLAIN, 12));
+
+        panel.add(new JScrollPane(listaEsperaVisual), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel crearPanelActividades() {
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+
+        JLabel lblHeader = new JLabel("ACTIVIDADES", SwingConstants.CENTER);
+        lblHeader.setOpaque(true);
+        lblHeader.setBackground(COLOR_HEADER_AVION);
+        lblHeader.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblHeader.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panel.add(lblHeader, BorderLayout.NORTH);
+
+        JPanel panelRadios = new JPanel();
+        panelRadios.setLayout(new BoxLayout(panelRadios, BoxLayout.Y_AXIS));
+        panelRadios.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        rbExclusionMutua = new JRadioButton("EXCLUSION MUTUA", true);
+        rbSinExclusionMutua = new JRadioButton("SIN EXCLUSION MUTUA", false);
+
+        rbExclusionMutua.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        rbSinExclusionMutua.setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        ButtonGroup grupoModo = new ButtonGroup();
+        grupoModo.add(rbExclusionMutua);
+        grupoModo.add(rbSinExclusionMutua);
+
+        panelRadios.add(rbExclusionMutua);
+        panelRadios.add(Box.createVerticalStrut(15));
+        panelRadios.add(rbSinExclusionMutua);
+
+        panel.add(panelRadios, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // =========================================================================
+    // 3. FILA INFERIOR: REGISTRAR CLIENTE + TABLA AVIANCA
+    // =========================================================================
+    private JPanel crearFilaInferiorClientes() {
+        JPanel panelFila = new JPanel(new GridLayout(1, 2, 12, 0));
+
+        // 3.1 REGISTRAR CLIENTE
+        JPanel panelRegistro = new JPanel(new BorderLayout(5, 5));
+        panelRegistro.setBorder(BorderFactory.createLineBorder(new Color(212, 172, 13), 1));
+
+        JLabel lblHeaderReg = new JLabel("Registrar Cliente", SwingConstants.CENTER);
+        lblHeaderReg.setOpaque(true);
+        lblHeaderReg.setBackground(COLOR_HEADER_VENTANILLA);
+        lblHeaderReg.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblHeaderReg.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panelRegistro.add(lblHeaderReg, BorderLayout.NORTH);
+
+        JPanel formReg = new JPanel(new GridLayout(2, 2, 8, 8));
+        formReg.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        formReg.add(new JLabel("Cedula:"));
+        txtCedula = new JTextField();
+        formReg.add(txtCedula);
+        formReg.add(new JLabel("Nombre:"));
+        txtNombreCliente = new JTextField();
+        formReg.add(txtNombreCliente);
+        panelRegistro.add(formReg, BorderLayout.CENTER);
+
+        JButton btnRegistrar = new JButton("Registrar");
+        estilizarBotonAzul(btnRegistrar);
+        btnRegistrar.addActionListener(e -> registrarNuevoCliente());
+
+        JPanel panelBotonReg = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        panelBotonReg.add(btnRegistrar);
+        panelRegistro.add(panelBotonReg, BorderLayout.SOUTH);
+
+        panelFila.add(panelRegistro);
+
+        // 3.2 AVIANCA (TABLA DE CLIENTES)
+        JPanel panelAvianca = new JPanel(new BorderLayout(5, 5));
+        panelAvianca.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+
+        JLabel lblHeaderAvianca = new JLabel("AVIANCA", SwingConstants.CENTER);
+        lblHeaderAvianca.setOpaque(true);
+        lblHeaderAvianca.setBackground(COLOR_HEADER_AVIANCA);
+        lblHeaderAvianca.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblHeaderAvianca.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panelAvianca.add(lblHeaderAvianca, BorderLayout.NORTH);
+
+        modeloTablaClientes = new DefaultTableModel(new Object[]{"#", "Cedula", "Clientes"}, 0);
+        tablaClientes = new JTable(modeloTablaClientes);
+        tablaClientes.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        tablaClientes.setRowHeight(22);
+
+        // Al hacer doble clic en un cliente de la tabla, se carga en Ventanilla 1
+        tablaClientes.getSelectionModel().addListSelectionListener(e -> {
+            int selectedRow = tablaClientes.getSelectedRow();
+            if (selectedRow >= 0) {
+                String clienteSeleccionado = (String) modeloTablaClientes.getValueAt(selectedRow, 2);
+                txtClienteV1.setText(clienteSeleccionado);
+            }
+        });
+
+        panelAvianca.add(new JScrollPane(tablaClientes), BorderLayout.CENTER);
+        panelFila.add(panelAvianca);
+
+        return panelFila;
+    }
+
+    private JPanel crearPanelLog() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Log de Concurrencia y Eventos"));
+        panel.setPreferredSize(new Dimension(1000, 130));
 
         txtLog = new JTextArea();
         txtLog.setEditable(false);
-        txtLog.setFont(new Font("Consolas", Font.PLAIN, 12));
         txtLog.setBackground(new Color(30, 30, 30));
-        txtLog.setForeground(new Color(220, 220, 220));
+        txtLog.setForeground(new Color(230, 230, 230));
+        txtLog.setFont(new Font("Consolas", Font.PLAIN, 11));
 
         panel.add(new JScrollPane(txtLog), BorderLayout.CENTER);
         return panel;
     }
 
     // =========================================================================
-    // ACCIONES ASINCRONAS (NO BLOQUEAN LA INTERFAZ)
+    // ACCIONES Y LÓGICA DE CONCURRENCIA
     // =========================================================================
 
-    private void accionarReserva() {
-        String cliente = txtCliente.getText().trim();
-        String asientoStr = txtAsiento.getText().trim();
-        String ventanilla = (String) cmbVentanilla.getSelectedItem();
-        boolean seguro = cmbModo.getSelectedIndex() == 0;
+    private void agregarClientesIniciales() {
+        modeloTablaClientes.addRow(new Object[]{1, "0912345678", "Usuario A"});
+        modeloTablaClientes.addRow(new Object[]{2, "0923456789", "Usuario B"});
+        modeloTablaClientes.addRow(new Object[]{3, "0934567890", "Usuario C"});
+        contadorClientes = 4;
+    }
 
-        if (cliente.isEmpty() || asientoStr.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Complete el nombre del cliente y el asiento.", "Datos incompletos", JOptionPane.WARNING_MESSAGE);
+    private void registrarNuevoCliente() {
+        String cedula = txtCedula.getText().trim();
+        String nombre = txtNombreCliente.getText().trim();
+
+        if (cedula.isEmpty() || nombre.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Ingrese la cedula y el nombre del cliente.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        modeloTablaClientes.addRow(new Object[]{contadorClientes++, cedula, nombre});
+        txtCedula.setText("");
+        txtNombreCliente.setText("");
+        agregarLog("[CLIENTES] Cliente registrado: " + nombre + " (CI: " + cedula + ")");
+    }
+
+    /**
+     * DISPARADOR PRINCIPAL: Ejecuta las 3 ventanillas simultaneamente como hilos concurrentes.
+     */
+    private void ejecutarSimulacionConcurrente() {
+        boolean modoSeguro = rbExclusionMutua.isSelected();
+        agregarLog("\n==============================================================");
+        agregarLog(">>> DISPARANDO SIMULACION CONCURRENTE EN LAS 3 VENTANILLAS");
+        agregarLog("Modo de ejecucion: " + (modoSeguro ? "EXCLUSION MUTUA (Seguro)" : "SIN EXCLUSION MUTUA (Inseguro)"));
+        agregarLog("==============================================================");
+
+        Thread t1 = new Thread(() -> procesarVentanilla(txtAsientoV1.getText(), txtClienteV1.getText(), "Ventanilla 1", modoSeguro));
+        Thread t2 = new Thread(() -> procesarVentanilla(txtAsientoV2.getText(), txtClienteV2.getText(), "Ventanilla 2", modoSeguro));
+        Thread t3 = new Thread(() -> procesarVentanilla(txtAsientoV3.getText(), txtClienteV3.getText(), "Ventanilla 3", modoSeguro));
+
+        // Inician exactamente al mismo tiempo
+        t1.start();
+        t2.start();
+        t3.start();
+    }
+
+    private void procesarVentanilla(String asientoStr, String cliente, String ventanilla, boolean seguro) {
+        if (asientoStr.trim().isEmpty() || cliente.trim().isEmpty()) {
+            agregarLog("[" + ventanilla + "] Operacion cancelada: faltan datos.");
             return;
         }
 
         try {
-            int numAsiento = Integer.parseInt(asientoStr);
-            // Ejecutar en hilo de fondo para no congelar Swing
-            new Thread(() -> {
-                agregarLog(String.format("[%s] Solicitando reserva del Asiento #%d para '%s'...", ventanilla, numAsiento, cliente));
-                boolean exito;
-                if (seguro) {
-                    exito = gestorSeguro.reservar(numAsiento, cliente, ventanilla);
-                } else {
-                    exito = gestorInseguro.reservar(numAsiento, cliente, ventanilla);
+            int numAsiento = Integer.parseInt(asientoStr.trim());
+
+            // Simular retardo aleatorio entre 1 y 3 segundos segun el diagrama
+            long retardo = (long) (Math.random() * 2000 + 1000);
+            agregarLog(String.format("[%s] Procesando solicitud del Asiento #%d para '%s' (sleep %d ms)...",
+                    ventanilla, numAsiento, cliente, retardo));
+            Thread.sleep(retardo);
+
+            boolean exito;
+            if (seguro) {
+                // Modo Seguro con Exclusión Mutua
+                exito = gestorSeguro.reservar(numAsiento, cliente, ventanilla);
+                if (!exito) {
+                    // Si no se pudo porque estaba ocupado, pasa a la Lista de Espera del asiento
+                    agregarAListaEspera("Asiento " + numAsiento, cliente + " (" + ventanilla + ")");
+                    agregarLog(String.format("[%s] Asiento #%d ocupado. '%s' entra a la Lista de Espera.",
+                            ventanilla, numAsiento, cliente));
                 }
-                agregarLog(String.format("[%s] Resultado de reserva: %s", ventanilla, exito ? "EXITOSA" : "DENEGADA"));
-                SwingUtilities.invokeLater(() -> {
-                    actualizarVistaAsientos();
-                    actualizarEstadisticas();
-                });
-            }).start();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "El número de asiento debe ser un entero válido (1-30).", "Error de formato", JOptionPane.ERROR_MESSAGE);
+            } else {
+                // Modo Inseguro: Provoca colisiones y condiciones de carrera
+                exito = gestorInseguro.reservar(numAsiento, cliente, ventanilla);
+            }
+
+            SwingUtilities.invokeLater(this::actualizarMapaAvion);
+        } catch (NumberFormatException e) {
+            agregarLog("[" + ventanilla + "] Error: Asiento no valido.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    private void accionarCancelacion() {
-        String cliente = txtCliente.getText().trim();
-        String asientoStr = txtAsiento.getText().trim();
-        String ventanilla = (String) cmbVentanilla.getSelectedItem();
+    private void operarReserva(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
+        boolean modoSeguro = rbExclusionMutua.isSelected();
+        new Thread(() -> procesarVentanilla(txtAsiento.getText(), txtCliente.getText(), ventanilla, modoSeguro)).start();
+    }
 
-        if (cliente.isEmpty() || asientoStr.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Indique el cliente y el asiento a cancelar.", "Datos incompletos", JOptionPane.WARNING_MESSAGE);
+    private void operarEliminacion(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
+        String asientoStr = txtAsiento.getText().trim();
+        String cliente = txtCliente.getText().trim();
+
+        if (asientoStr.isEmpty() || cliente.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Indique el asiento y el cliente para eliminar la reserva.", "Atencion", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -316,69 +580,95 @@ public class VentanaPrincipal extends JFrame {
             int numAsiento = Integer.parseInt(asientoStr);
             new Thread(() -> {
                 boolean exito = gestionReservas.cancelarReserva(numAsiento, cliente, ventanilla);
-                agregarLog(String.format("[%s] Cancelacion Asiento #%d: %s", ventanilla, numAsiento, exito ? "LIBERADO" : "FALLIDO"));
+                agregarLog(String.format("[%s] Eliminacion Asiento #%d: %s", ventanilla, numAsiento, exito ? "EXITOSA" : "DENEGADA"));
+
                 if (exito) {
-                    colaEspera.notificarAsientoLiberado();
+                    // Si habia alguien esperando por este asiento en la lista de espera, asignarselo automaticamente
+                    verificarYAsignarListaEspera(numAsiento);
                 }
-                SwingUtilities.invokeLater(() -> {
-                    actualizarVistaAsientos();
-                    actualizarEstadisticas();
-                });
+
+                SwingUtilities.invokeLater(this::actualizarMapaAvion);
             }).start();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Numero de asiento invalido.", "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Numero de asiento no valido.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void accionarCambio() {
-        String cliente = txtCliente.getText().trim();
+    private void operarCambio(JTextField txtAsiento, JTextField txtCliente, String ventanilla) {
         String actualStr = txtAsiento.getText().trim();
-        String nuevoStr = txtNuevoAsiento.getText().trim();
-        String ventanilla = (String) cmbVentanilla.getSelectedItem();
+        String cliente = txtCliente.getText().trim();
+        String nuevoStr = JOptionPane.showInputDialog(this, "Ingrese el nuevo asiento al que desea cambiar a '" + cliente + "':");
 
-        if (cliente.isEmpty() || actualStr.isEmpty() || nuevoStr.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Indique el cliente, asiento actual y el nuevo asiento.", "Datos incompletos", JOptionPane.WARNING_MESSAGE);
+        if (nuevoStr == null || nuevoStr.trim().isEmpty()) {
             return;
         }
 
         try {
             int actual = Integer.parseInt(actualStr);
-            int nuevo = Integer.parseInt(nuevoStr);
+            int nuevo = Integer.parseInt(nuevoStr.trim());
 
             new Thread(() -> {
                 boolean exito = gestionReservas.cambiarAsiento(actual, nuevo, cliente, ventanilla);
-                agregarLog(String.format("[%s] Cambio Asiento #%d -> #%d: %s", ventanilla, actual, nuevo, exito ? "EXITOSO" : "FALLIDO"));
-                SwingUtilities.invokeLater(() -> {
-                    actualizarVistaAsientos();
-                    actualizarEstadisticas();
-                });
+                agregarLog(String.format("[%s] Cambio Asiento #%d -> #%d para '%s': %s",
+                        ventanilla, actual, nuevo, cliente, exito ? "EXITOSO" : "FALLIDO"));
+                if (exito) {
+                    verificarYAsignarListaEspera(actual);
+                }
+                SwingUtilities.invokeLater(this::actualizarMapaAvion);
             }).start();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Los numeros de asiento deben ser enteros validos.", "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Numero de asiento no valido.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void accionarEncolar() {
-        String cliente = txtCliente.getText().trim();
-        String asientoStr = txtAsiento.getText().trim();
+    private synchronized void agregarAListaEspera(String etiquetaAsiento, String cliente) {
+        SwingUtilities.invokeLater(() -> {
+            modeloListaEspera.addElement("--- " + etiquetaAsiento + " ---");
+            modeloListaEspera.addElement(cliente);
+        });
+    }
 
-        if (cliente.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Ingrese el nombre del cliente para encolar.", "Atención", JOptionPane.WARNING_MESSAGE);
-            return;
+    private synchronized void verificarYAsignarListaEspera(int numAsientoLiberado) {
+        SwingUtilities.invokeLater(() -> {
+            String etiqueta = "--- Asiento " + numAsientoLiberado + " ---";
+            for (int i = 0; i < modeloListaEspera.size(); i++) {
+                if (modeloListaEspera.get(i).equals(etiqueta) && (i + 1) < modeloListaEspera.size()) {
+                    String clienteEsperando = modeloListaEspera.get(i + 1);
+                    // Limpiar la referencia de ventanilla si la tiene
+                    String nombrePuro = clienteEsperando.split(" \\(")[0];
+
+                    // Asignacion automatica
+                    gestorSeguro.reservar(numAsientoLiberado, nombrePuro, "AutoAsignacion");
+                    agregarLog(String.format(">>> [ASIGNACION AUTOMATICA] Asiento #%d liberado fue asignado a '%s' de la Lista de Espera.",
+                            numAsientoLiberado, nombrePuro));
+
+                    modeloListaEspera.remove(i + 1);
+                    modeloListaEspera.remove(i);
+                    actualizarMapaAvion();
+                    break;
+                }
+            }
+        });
+    }
+
+    public void actualizarMapaAvion() {
+        for (int i = 0; i < Avion.TOTAL_ASIENTOS; i++) {
+            Asiento a = avion.getAsiento(i + 1);
+            if (a != null) {
+                if (a.isOcupado()) {
+                    botonesAsientos[i].setBackground(COLOR_ASIENTO_OCUPADO);
+                    // Mostrar código o nombre corto del cliente como en el bosquejo (ej: B1, A5, o iniciales)
+                    String cli = a.getCliente();
+                    String display = cli.length() > 6 ? cli.substring(0, 5) + ".." : cli;
+                    botonesAsientos[i].setText("<html><center>#" + a.getNumero() + "<br><b>" + display + "</b></center></html>");
+                    botonesAsientos[i].setToolTipText("Ocupado por: " + a.getCliente());
+                } else {
+                    botonesAsientos[i].setBackground(COLOR_ASIENTO_LIBRE);
+                    botonesAsientos[i].setText(String.valueOf(a.getNumero()));
+                    botonesAsientos[i].setToolTipText("Asiento #" + a.getNumero() + " Disponible");
+                }
+            }
         }
-
-        int asientoDeseado = 0;
-        if (!asientoStr.isEmpty()) {
-            try {
-                asientoDeseado = Integer.parseInt(asientoStr);
-            } catch (NumberFormatException ignored) {}
-        }
-
-        SolicitudReserva solicitud = new SolicitudReserva(cliente, asientoDeseado);
-        colaEspera.agregarCliente(solicitud);
-        agregarLog(String.format("[COLA] Cliente '%s' agregado a la cola de espera.", cliente));
-        actualizarCola();
-        actualizarEstadisticas();
     }
 
     public void agregarLog(String mensaje) {
@@ -386,38 +676,5 @@ public class VentanaPrincipal extends JFrame {
             txtLog.append(mensaje + "\n");
             txtLog.setCaretPosition(txtLog.getDocument().getLength());
         });
-    }
-
-    public void actualizarVistaAsientos() {
-        for (int i = 0; i < Avion.TOTAL_ASIENTOS; i++) {
-            Asiento a = avion.getAsiento(i + 1);
-            if (a != null) {
-                if (a.isOcupado()) {
-                    botonesAsientos[i].setBackground(COLOR_OCUPADO);
-                    botonesAsientos[i].setText("#" + a.getNumero() + " (" + a.getCliente() + ")");
-                    botonesAsientos[i].setToolTipText("Ocupado por: " + a.getCliente());
-                } else {
-                    botonesAsientos[i].setBackground(COLOR_LIBRE);
-                    botonesAsientos[i].setText("#" + a.getNumero() + " [Libre]");
-                    botonesAsientos[i].setToolTipText("Disponible");
-                }
-            }
-        }
-    }
-
-    public void actualizarCola() {
-        SwingUtilities.invokeLater(() -> {
-            modeloCola.clear();
-            List<SolicitudReserva> lista = colaEspera.getListaEspera();
-            for (SolicitudReserva s : lista) {
-                modeloCola.addElement(s.toString());
-            }
-        });
-    }
-
-    public void actualizarEstadisticas() {
-        lblDisponibles.setText("Libres: " + avion.getCantidadDisponibles());
-        lblOcupados.setText("Ocupados: " + avion.getCantidadOcupados());
-        lblColaSize.setText("En cola: " + colaEspera.getTamano());
     }
 }
