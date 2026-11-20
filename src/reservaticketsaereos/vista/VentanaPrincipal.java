@@ -88,6 +88,9 @@ public class VentanaPrincipal extends JFrame {
     // Consola / Log de actividades en tiempo real
     private JTextArea txtLog;
 
+    // Ventanilla seleccionada actualmente por el usuario (1, 2 o 3)
+    private int ventanillaActiva = 1;
+
     // Estilos de color segun el diagrama
     private static final Color COLOR_HEADER_VENTANILLA = new Color(254, 249, 231); // Amarillo suave
     private static final Color COLOR_HEADER_AVION = new Color(245, 183, 177); // Rosado / Salmon suave
@@ -216,6 +219,17 @@ public class VentanaPrincipal extends JFrame {
         panelCampos.add(txtAsiento);
         panelCampos.add(new JLabel("Cliente:"));
         panelCampos.add(txtCliente);
+
+        // Detectar cuando el usuario hace clic o escribe en esta ventanilla para volverla activa
+        java.awt.event.FocusAdapter focoVentanilla = new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                ventanillaActiva = numVentanilla;
+            }
+        };
+        txtAsiento.addFocusListener(focoVentanilla);
+        txtCliente.addFocusListener(focoVentanilla);
+
         panel.add(panelCampos, BorderLayout.CENTER);
 
         // Botonera de la ventanilla
@@ -333,11 +347,13 @@ public class VentanaPrincipal extends JFrame {
         btn.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
 
         btn.addActionListener(e -> {
-            // Cargar en la primera ventanilla disponible
-            txtAsientoV1.setText(String.valueOf(numAsiento));
-            Asiento a = avion.getAsiento(numAsiento);
-            if (a != null && a.isOcupado()) {
-                txtClienteV1.setText(a.getCliente());
+            // Cargar el asiento en la ventanilla actualmente activa (donde el usuario hizo clic)
+            if (ventanillaActiva == 1) {
+                txtAsientoV1.setText(String.valueOf(numAsiento));
+            } else if (ventanillaActiva == 2) {
+                txtAsientoV2.setText(String.valueOf(numAsiento));
+            } else {
+                txtAsientoV3.setText(String.valueOf(numAsiento));
             }
         });
         return btn;
@@ -400,6 +416,8 @@ public class VentanaPrincipal extends JFrame {
     // =========================================================================
     private JPanel crearFilaInferiorClientes() {
         JPanel panelFila = new JPanel(new GridLayout(1, 2, 12, 0));
+        panelFila.setPreferredSize(new Dimension(1000, 145));
+        panelFila.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
 
         // 3.1 REGISTRAR CLIENTE
         JPanel panelRegistro = new JPanel(new BorderLayout(5, 5));
@@ -412,13 +430,44 @@ public class VentanaPrincipal extends JFrame {
         lblHeaderReg.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         panelRegistro.add(lblHeaderReg, BorderLayout.NORTH);
 
-        JPanel formReg = new JPanel(new GridLayout(2, 2, 8, 8));
-        formReg.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-        formReg.add(new JLabel("Cedula:"));
+        // Formulario compacto para evitar estiramiento vertical excesivo
+        JPanel formReg = new JPanel(new GridLayout(2, 2, 8, 6));
+        formReg.setBorder(BorderFactory.createEmptyBorder(8, 20, 4, 20));
+
+        JLabel lblCed = new JLabel("Cedula:");
+        lblCed.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        formReg.add(lblCed);
+
         txtCedula = new JTextField();
+        txtCedula.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        // Evento para admitir unicamente numeros del 0 al 9 y maximo 10 digitos
+        txtCedula.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyTyped(java.awt.event.KeyEvent e) {
+                char c = e.getKeyChar();
+                if (!Character.isDigit(c) || txtCedula.getText().length() >= 10) {
+                    e.consume();
+                }
+            }
+        });
         formReg.add(txtCedula);
-        formReg.add(new JLabel("Nombre:"));
+
+        JLabel lblNom = new JLabel("Nombre:");
+        lblNom.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        formReg.add(lblNom);
+
         txtNombreCliente = new JTextField();
+        txtNombreCliente.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        // Evento para admitir solo letras y espacios
+        txtNombreCliente.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyTyped(java.awt.event.KeyEvent e) {
+                char c = e.getKeyChar();
+                if (!Character.isLetter(c) && !Character.isWhitespace(c) && !Character.isISOControl(c)) {
+                    e.consume();
+                }
+            }
+        });
         formReg.add(txtNombreCliente);
         panelRegistro.add(formReg, BorderLayout.CENTER);
 
@@ -426,7 +475,7 @@ public class VentanaPrincipal extends JFrame {
         estilizarBotonAzul(btnRegistrar);
         btnRegistrar.addActionListener(e -> registrarNuevoCliente());
 
-        JPanel panelBotonReg = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JPanel panelBotonReg = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
         panelBotonReg.add(btnRegistrar);
         panelRegistro.add(panelBotonReg, BorderLayout.SOUTH);
 
@@ -446,18 +495,25 @@ public class VentanaPrincipal extends JFrame {
         modeloTablaClientes = new DefaultTableModel(new Object[]{"#", "Cedula", "Clientes"}, 0);
         tablaClientes = new JTable(modeloTablaClientes);
         tablaClientes.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        tablaClientes.setRowHeight(22);
+        tablaClientes.setRowHeight(20);
 
-        // Al hacer doble clic en un cliente de la tabla, se carga en Ventanilla 1
+        // Al seleccionar un cliente de la tabla, se carga en la ventanilla actualmente activa
         tablaClientes.getSelectionModel().addListSelectionListener(e -> {
             int selectedRow = tablaClientes.getSelectedRow();
             if (selectedRow >= 0) {
                 String clienteSeleccionado = (String) modeloTablaClientes.getValueAt(selectedRow, 2);
-                txtClienteV1.setText(clienteSeleccionado);
+                if (ventanillaActiva == 1) {
+                    txtClienteV1.setText(clienteSeleccionado);
+                } else if (ventanillaActiva == 2) {
+                    txtClienteV2.setText(clienteSeleccionado);
+                } else {
+                    txtClienteV3.setText(clienteSeleccionado);
+                }
             }
         });
 
-        panelAvianca.add(new JScrollPane(tablaClientes), BorderLayout.CENTER);
+        JScrollPane scrollTabla = new JScrollPane(tablaClientes);
+        panelAvianca.add(scrollTabla, BorderLayout.CENTER);
         panelFila.add(panelAvianca);
 
         return panelFila;
@@ -494,7 +550,18 @@ public class VentanaPrincipal extends JFrame {
         String nombre = txtNombreCliente.getText().trim();
 
         if (cedula.isEmpty() || nombre.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Ingrese la cedula y el nombre del cliente.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, 
+                    "Por favor, debe rellenar todos los campos (Cedula y Nombre).", 
+                    "Campos vacios", 
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        if (cedula.length() != 10) {
+            JOptionPane.showMessageDialog(this, 
+                    "La cedula debe contener exactamente 10 digitos numericos.", 
+                    "Cedula incompleta", 
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 

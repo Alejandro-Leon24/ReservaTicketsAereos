@@ -132,11 +132,17 @@ public class ReservaTicketsAereos {
         System.out.println(">>> CASO 5: LANZANDO INTERFAZ GRAFICA SWING (Nohelya Monar)");
         System.out.println("===============================================================");
 
-        // Iniciar interfaz grafica Swing en el hilo EDT (Event Dispatch Thread)
+        // Iniciar interfaz grafica Swing con su propio avion e instancias limpias (sin hilos previos)
         SwingUtilities.invokeLater(() -> {
+            Avion avionGUI = new Avion();
+            ReservaSegura gestorSeguroGUI = new ReservaSegura(avionGUI);
+            ReservaSinControl gestorInseguroGUI = new ReservaSinControl(avionGUI);
+            GestionReservas gestionGUI = new GestionReservas(avionGUI);
+            ColaEspera colaGUI = new ColaEspera(30);
+
             VentanaPrincipal ventana = new VentanaPrincipal(
-                    avionGeneral, gestorGeneralSeguro, gestorGeneralInseguro,
-                    gestionGeneral, colaGeneral);
+                    avionGUI, gestorSeguroGUI, gestorInseguroGUI,
+                    gestionGUI, colaGUI);
             ventana.setVisible(true);
         });
     }
