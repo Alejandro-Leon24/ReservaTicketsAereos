@@ -4,7 +4,10 @@ import java.util.List;
 import reservaticketsaereos.controlador.GestionReservas;
 import reservaticketsaereos.controlador.ReservaSegura;
 import reservaticketsaereos.controlador.ReservaSinControl;
+import reservaticketsaereos.controlador.Ventanilla;
 import reservaticketsaereos.modelo.Avion;
+import reservaticketsaereos.modelo.ColaEspera;
+import reservaticketsaereos.modelo.SolicitudReserva;
 
 public class ReservaTicketsAereos {
 
@@ -80,27 +83,77 @@ public class ReservaTicketsAereos {
         System.out.println(">>> CASO 3: GESTION DE RESERVAS (CANCELACION Y CAMBIO)");
         GestionReservas gestion = new GestionReservas(avionSeguro);
 
-        // Preparamos reservas iniciales para probar cancelaciones y cambios
         gestorSeguro.reservar(12, "Natasha Mehler", "Ventanilla-1");
         gestorSeguro.reservar(15, "Roberto Gomez", "Ventanilla-2");
 
-        System.out.println("\n-- Prueba 3.1: Intento de cancelar asiento libre (Asiento #20) --");
         gestion.cancelarReserva(20, "Natasha Mehler", "Ventanilla-1");
-
-        System.out.println("\n-- Prueba 3.2: Intento de cancelar asiento ajeno (Asiento #15 de Roberto) --");
         gestion.cancelarReserva(15, "Natasha Mehler", "Ventanilla-1");
-
-        System.out.println("\n-- Prueba 3.3: Cambio exitoso de asiento (Natasha pasa del #12 al #14 libre) --");
         gestion.cambiarAsiento(12, 14, "Natasha Mehler", "Ventanilla-1");
-
-        System.out.println("\n-- Prueba 3.4: Cancelacion exitosa de la reserva (Natasha cancela su Asiento #14) --");
         gestion.cancelarReserva(14, "Natasha Mehler", "Ventanilla-1");
 
         List<Integer> reservasNatasha = gestion.consultarAsientosDeCliente("Natasha Mehler");
         System.out.println("\n[RESUMEN CASO 3 - CANCELACION Y CAMBIO]");
         System.out.printf("Total cancelaciones exitosas: %d | Total cambios exitosos: %d\n",
                 gestion.getTotalCancelaciones(), gestion.getTotalCambios());
-        System.out.printf("Asientos actuales de Natasha Mehler: %s\n", reservasNatasha);
+        System.out.printf("Asientos actuales de Natasha Mehler: %s\n\n", reservasNatasha);
+
+        // ------------------------------------------------------------------
+        // CASO 4: HILOS, VENTANILLAS Y COLA DE ESPERA (Jeremy Mero)
+        // ------------------------------------------------------------------
+        System.out.println("---------------------------------------------------------------");
+        System.out.println(">>> CASO 4: 3 VENTANILLAS CONCURRENTES CONSUMIENDO COLA DE ESPERA");
+        Avion avionVentanillas = new Avion();
+        ReservaSegura gestorVentanillas = new ReservaSegura(avionVentanillas);
+        ColaEspera cola = new ColaEspera(20);
+
+        // Instanciar 3 ventanillas concurrentes
+        Ventanilla v1 = new Ventanilla("Ventanilla-A", cola, gestorVentanillas);
+        Ventanilla v2 = new Ventanilla("Ventanilla-B", cola, gestorVentanillas);
+        Ventanilla v3 = new Ventanilla("Ventanilla-C", cola, gestorVentanillas);
+
+        Thread tv1 = new Thread(v1);
+        Thread tv2 = new Thread(v2);
+        Thread tv3 = new Thread(v3);
+
+        tv1.start();
+        tv2.start();
+        tv3.start();
+
+        // Encolamos varios clientes en orden de llegada
+        cola.agregarCliente(new SolicitudReserva("Laura Paez", 1));
+        cola.agregarCliente(new SolicitudReserva("David Ruiz", 2));
+        cola.agregarCliente(new SolicitudReserva("Elena Moran", 1)); // competira por el #1
+        cola.agregarCliente(new SolicitudReserva("Gabriel Soto", 3));
+        cola.agregarCliente(new SolicitudReserva("Patricia Vera", 0)); // cualquiera disponible
+        cola.agregarCliente(new SolicitudReserva("Fernando Paz", 0)); // cualquiera disponible
+
+        // Esperar a que las ventanillas procesen la cola
+        try {
+            Thread.sleep(1200);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        // Detener ventanillas
+        v1.detener();
+        v2.detener();
+        v3.detener();
+
+        try {
+            tv1.join();
+            tv2.join();
+            tv3.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("\n[RESUMEN CASO 4 - HILOS Y COLA]");
+        System.out.printf("Atendidos por %s: %d\n", v1.getNombre(), v1.getClientesAtendidos());
+        System.out.printf("Atendidos por %s: %d\n", v2.getNombre(), v2.getClientesAtendidos());
+        System.out.printf("Atendidos por %s: %d\n", v3.getNombre(), v3.getClientesAtendidos());
+        System.out.printf("Clientes restantes en cola: %d\n", cola.getTamano());
+        System.out.printf("Total asientos ocupados en avion: %d / %d\n", 
+                avionVentanillas.getCantidadOcupados(), Avion.TOTAL_ASIENTOS);
         System.out.println("===============================================================");
     }
 }
