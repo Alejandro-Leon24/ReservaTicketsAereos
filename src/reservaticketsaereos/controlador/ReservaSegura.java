@@ -1,6 +1,7 @@
 package reservaticketsaereos.controlador;
 
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import reservaticketsaereos.modelo.Asiento;
 import reservaticketsaereos.modelo.Avion;
 
@@ -20,12 +21,25 @@ public class ReservaSegura {
 
     private int reservasExitosas;
     private int reservasRechazadas;
+    private Consumer<String> logger;
 
     public ReservaSegura(Avion avion) {
         this.avion = avion;
         this.lock = new ReentrantLock(true);
         this.reservasExitosas = 0;
         this.reservasRechazadas = 0;
+        this.logger = System.out::println;
+    }
+
+    public void setLogger(Consumer<String> logger) {
+        this.logger = logger;
+    }
+
+    private void emitirLog(String mensaje) {
+        System.out.println(mensaje);
+        if (logger != null) {
+            logger.accept(mensaje);
+        }
     }
 
     /**
@@ -34,28 +48,28 @@ public class ReservaSegura {
     public boolean reservar(int numeroAsiento, String cliente, String ventanilla) {
         lock.lock(); // ENTRADA A SECCIÓN CRÍTICA
         try {
-            System.out.printf("[%s] [SEGURO] Evaluando Asiento #%d para '%s'...\n",
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] [SEGURO] Evaluando Asiento #%d para '%s'...",
+                    ventanilla, numeroAsiento, cliente));
 
             if (avion.isAsientoDisponible(numeroAsiento)) {
-                // Simulación de tiempo de procesamiento seguro dentro de la sección crítica
+                // Simulación de tiempo de procesamiento seguro dentro de la sección crítica (1 a 2 seg)
                 try {
-                    Thread.sleep(80);
+                    Thread.sleep((long) (Math.random() * 1000 + 1000));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
 
                 avion.ocuparAsiento(numeroAsiento, cliente);
                 reservasExitosas++;
-                System.out.printf("[%s] [SEGURO] ÉXITO: Asiento #%d asignado exitosamente a '%s'.\n",
-                        ventanilla, numeroAsiento, cliente);
+                emitirLog(String.format("[%s] [SEGURO] EXITO: Asiento #%d asignado exitosamente a '%s'.",
+                        ventanilla, numeroAsiento, cliente));
                 return true;
             } else {
                 reservasRechazadas++;
                 Asiento ocupadoPor = avion.getAsiento(numeroAsiento);
                 String titular = (ocupadoPor != null) ? ocupadoPor.getCliente() : "Desconocido";
-                System.out.printf("[%s] [SEGURO] DENEGADO: Asiento #%d ya fue ocupado previamente por '%s'.\n",
-                        ventanilla, numeroAsiento, titular);
+                emitirLog(String.format("[%s] [SEGURO] DENEGADO: Asiento #%d ya fue ocupado previamente por '%s'.",
+                        ventanilla, numeroAsiento, titular));
                 return false;
             }
         } finally {
@@ -72,12 +86,12 @@ public class ReservaSegura {
             Asiento asiento = avion.getAsiento(numeroAsiento);
             if (asiento != null && asiento.isOcupado() && asiento.getCliente().equalsIgnoreCase(cliente)) {
                 avion.liberarAsiento(numeroAsiento);
-                System.out.printf("[%s] [SEGURO] CANCELACIÓN EXITOSA: Asiento #%d liberado por '%s'.\n",
-                        ventanilla, numeroAsiento, cliente);
+                emitirLog(String.format("[%s] [SEGURO] CANCELACION EXITOSA: Asiento #%d liberado por '%s'.",
+                        ventanilla, numeroAsiento, cliente));
                 return true;
             } else {
-                System.out.printf("[%s] [SEGURO] ERROR CANCELACIÓN: Asiento #%d no pertenece a '%s' o no está ocupado.\n",
-                        ventanilla, numeroAsiento, cliente);
+                emitirLog(String.format("[%s] [SEGURO] ERROR CANCELACION: Asiento #%d no pertenece a '%s' o no esta ocupado.",
+                        ventanilla, numeroAsiento, cliente));
                 return false;
             }
         } finally {
@@ -94,23 +108,23 @@ public class ReservaSegura {
             Asiento origen = avion.getAsiento(asientoActual);
             // 1. Validar que el asiento origen sea del cliente
             if (origen == null || !origen.isOcupado() || !origen.getCliente().equalsIgnoreCase(cliente)) {
-                System.out.printf("[%s] [SEGURO] CAMBIO FALLIDO: El cliente '%s' no posee el Asiento #%d.\n",
-                        ventanilla, cliente, asientoActual);
+                emitirLog(String.format("[%s] [SEGURO] CAMBIO FALLIDO: El cliente '%s' no posee el Asiento #%d.",
+                        ventanilla, cliente, asientoActual));
                 return false;
             }
 
             // 2. Validar que el nuevo asiento esté disponible
             if (!avion.isAsientoDisponible(nuevoAsiento)) {
-                System.out.printf("[%s] [SEGURO] CAMBIO FALLIDO: El nuevo Asiento #%d no está disponible.\n",
-                        ventanilla, nuevoAsiento);
+                emitirLog(String.format("[%s] [SEGURO] CAMBIO FALLIDO: El nuevo Asiento #%d no esta disponible.",
+                        ventanilla, nuevoAsiento));
                 return false;
             }
 
             // 3. Ejecución atómica del cambio
             avion.liberarAsiento(asientoActual);
             avion.ocuparAsiento(nuevoAsiento, cliente);
-            System.out.printf("[%s] [SEGURO] CAMBIO EXITOSO: Cliente '%s' movido del Asiento #%d al Asiento #%d.\n",
-                    ventanilla, cliente, asientoActual, nuevoAsiento);
+            emitirLog(String.format("[%s] [SEGURO] CAMBIO EXITOSO: Cliente '%s' movido del Asiento #%d al Asiento #%d.",
+                    ventanilla, cliente, asientoActual, nuevoAsiento));
             return true;
         } finally {
             lock.unlock();

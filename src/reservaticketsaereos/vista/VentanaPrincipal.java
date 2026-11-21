@@ -15,8 +15,10 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -63,15 +65,15 @@ public class VentanaPrincipal extends JFrame {
 
     // Componentes de Ventanilla 1
     private JTextField txtAsientoV1;
-    private JTextField txtClienteV1;
+    private JComboBox<String> cmbClienteV1;
 
     // Componentes de Ventanilla 2
     private JTextField txtAsientoV2;
-    private JTextField txtClienteV2;
+    private JComboBox<String> cmbClienteV2;
 
     // Componentes de Ventanilla 3
     private JTextField txtAsientoV3;
-    private JTextField txtClienteV3;
+    private JComboBox<String> cmbClienteV3;
 
     // Selector de Concurrencia (Actividades)
     private JRadioButton rbExclusionMutua;
@@ -120,6 +122,7 @@ public class VentanaPrincipal extends JFrame {
         this.v1.setLogger(this::agregarLog);
         this.v2.setLogger(this::agregarLog);
         this.v3.setLogger(this::agregarLog);
+        this.gestionReservas.setLogger(this::agregarLog);
         this.colaEspera.registrarListener(this::actualizarColaVisual);
 
         initComponents();
@@ -165,20 +168,25 @@ public class VentanaPrincipal extends JFrame {
     private JPanel crearFilaSuperiorVentanillas() {
         JPanel panelFila = new JPanel(new GridLayout(1, 4, 12, 0));
 
+        String[] clientesIniciales = {"Usuario A", "Usuario B", "Usuario C"};
+
         // Ventanilla 1
         txtAsientoV1 = new JTextField("2");
-        txtClienteV1 = new JTextField("Usuario A");
-        panelFila.add(crearCajaVentanilla("Ventanilla 1", txtAsientoV1, txtClienteV1, v1, 1));
+        cmbClienteV1 = new JComboBox<>(new DefaultComboBoxModel<>(clientesIniciales.clone()));
+        cmbClienteV1.setSelectedItem("Usuario A");
+        panelFila.add(crearCajaVentanilla("Ventanilla 1", txtAsientoV1, cmbClienteV1, v1, 1));
 
         // Ventanilla 2
         txtAsientoV2 = new JTextField("2");
-        txtClienteV2 = new JTextField("Usuario B");
-        panelFila.add(crearCajaVentanilla("Ventanilla 2", txtAsientoV2, txtClienteV2, v2, 2));
+        cmbClienteV2 = new JComboBox<>(new DefaultComboBoxModel<>(clientesIniciales.clone()));
+        cmbClienteV2.setSelectedItem("Usuario B");
+        panelFila.add(crearCajaVentanilla("Ventanilla 2", txtAsientoV2, cmbClienteV2, v2, 2));
 
         // Ventanilla 3
         txtAsientoV3 = new JTextField("2");
-        txtClienteV3 = new JTextField("Usuario C");
-        panelFila.add(crearCajaVentanilla("Ventanilla 3", txtAsientoV3, txtClienteV3, v3, 3));
+        cmbClienteV3 = new JComboBox<>(new DefaultComboBoxModel<>(clientesIniciales.clone()));
+        cmbClienteV3.setSelectedItem("Usuario C");
+        panelFila.add(crearCajaVentanilla("Ventanilla 3", txtAsientoV3, cmbClienteV3, v3, 3));
 
         // Caja 'RESERVAR ASIENTO' -> Simular concurrencia
         JPanel panelSimular = new JPanel(new BorderLayout(5, 10));
@@ -210,7 +218,7 @@ public class VentanaPrincipal extends JFrame {
         return panelFila;
     }
 
-    private JPanel crearCajaVentanilla(String titulo, JTextField txtAsiento, JTextField txtCliente, Ventanilla vent, int numVentanilla) {
+    private JPanel crearCajaVentanilla(String titulo, JTextField txtAsiento, JComboBox<String> cmbCliente, Ventanilla vent, int numVentanilla) {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
         panel.setBorder(BorderFactory.createLineBorder(new Color(212, 172, 13), 1));
 
@@ -228,15 +236,15 @@ public class VentanaPrincipal extends JFrame {
         header.add(lblTitulo, BorderLayout.CENTER);
         panel.add(header, BorderLayout.NORTH);
 
-        // Campos: Asiento y Cliente
+        // Campos: Asiento y Cliente (Selector)
         JPanel panelCampos = new JPanel(new GridLayout(2, 2, 4, 4));
         panelCampos.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         panelCampos.add(new JLabel("Asiento:"));
         panelCampos.add(txtAsiento);
         panelCampos.add(new JLabel("Cliente:"));
-        panelCampos.add(txtCliente);
+        panelCampos.add(cmbCliente);
 
-        // Detectar cuando el usuario hace clic o escribe en esta ventanilla para volverla activa
+        // Detectar cuando el usuario hace clic o selecciona en esta ventanilla para volverla activa
         java.awt.event.FocusAdapter focoVentanilla = new java.awt.event.FocusAdapter() {
             @Override
             public void focusGained(java.awt.event.FocusEvent e) {
@@ -244,7 +252,8 @@ public class VentanaPrincipal extends JFrame {
             }
         };
         txtAsiento.addFocusListener(focoVentanilla);
-        txtCliente.addFocusListener(focoVentanilla);
+        cmbCliente.addFocusListener(focoVentanilla);
+        cmbCliente.addActionListener(e -> ventanillaActiva = numVentanilla);
 
         panel.add(panelCampos, BorderLayout.CENTER);
 
@@ -260,9 +269,18 @@ public class VentanaPrincipal extends JFrame {
         estilizarBotonAzul(btnEliminar);
         estilizarBotonAzul(btnCambiar);
 
-        btnReservar.addActionListener(e -> operarReserva(txtAsiento, txtCliente, vent));
-        btnEliminar.addActionListener(e -> operarEliminacion(txtAsiento, txtCliente, vent));
-        btnCambiar.addActionListener(e -> operarCambio(txtAsiento, txtCliente, vent));
+        btnReservar.addActionListener(e -> {
+            ventanillaActiva = numVentanilla;
+            operarReserva(txtAsiento, cmbCliente, vent);
+        });
+        btnEliminar.addActionListener(e -> {
+            ventanillaActiva = numVentanilla;
+            operarEliminacion(txtAsiento, cmbCliente, vent);
+        });
+        btnCambiar.addActionListener(e -> {
+            ventanillaActiva = numVentanilla;
+            operarCambio(txtAsiento, cmbCliente, vent);
+        });
 
         panelBotones.add(btnReservar);
         panelBotones.add(btnEliminar);
@@ -369,6 +387,18 @@ public class VentanaPrincipal extends JFrame {
                 txtAsientoV2.setText(String.valueOf(numAsiento));
             } else {
                 txtAsientoV3.setText(String.valueOf(numAsiento));
+            }
+
+            // Si el asiento ya esta ocupado, seleccionar automaticamente al cliente en el selector de la ventanilla activa
+            Asiento a = avion.getAsiento(numAsiento);
+            if (a != null && a.isOcupado() && a.getCliente() != null) {
+                if (ventanillaActiva == 1) {
+                    cmbClienteV1.setSelectedItem(a.getCliente());
+                } else if (ventanillaActiva == 2) {
+                    cmbClienteV2.setSelectedItem(a.getCliente());
+                } else {
+                    cmbClienteV3.setSelectedItem(a.getCliente());
+                }
             }
         });
         return btn;
@@ -512,17 +542,17 @@ public class VentanaPrincipal extends JFrame {
         tablaClientes.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         tablaClientes.setRowHeight(20);
 
-        // Al seleccionar un cliente de la tabla, se carga en la ventanilla actualmente activa
+        // Al seleccionar un cliente de la tabla, se selecciona en el desplegable de la ventanilla activa
         tablaClientes.getSelectionModel().addListSelectionListener(e -> {
             int selectedRow = tablaClientes.getSelectedRow();
-            if (selectedRow >= 0) {
+            if (selectedRow >= 0 && !e.getValueIsAdjusting()) {
                 String clienteSeleccionado = (String) modeloTablaClientes.getValueAt(selectedRow, 2);
                 if (ventanillaActiva == 1) {
-                    txtClienteV1.setText(clienteSeleccionado);
+                    cmbClienteV1.setSelectedItem(clienteSeleccionado);
                 } else if (ventanillaActiva == 2) {
-                    txtClienteV2.setText(clienteSeleccionado);
+                    cmbClienteV2.setSelectedItem(clienteSeleccionado);
                 } else {
-                    txtClienteV3.setText(clienteSeleccionado);
+                    cmbClienteV3.setSelectedItem(clienteSeleccionado);
                 }
             }
         });
@@ -581,6 +611,19 @@ public class VentanaPrincipal extends JFrame {
         }
 
         modeloTablaClientes.addRow(new Object[]{contadorClientes++, cedula, nombre});
+        cmbClienteV1.addItem(nombre);
+        cmbClienteV2.addItem(nombre);
+        cmbClienteV3.addItem(nombre);
+
+        // Auto-seleccionar el nuevo cliente en la ventanilla actualmente activa
+        if (ventanillaActiva == 1) {
+            cmbClienteV1.setSelectedItem(nombre);
+        } else if (ventanillaActiva == 2) {
+            cmbClienteV2.setSelectedItem(nombre);
+        } else {
+            cmbClienteV3.setSelectedItem(nombre);
+        }
+
         txtCedula.setText("");
         txtNombreCliente.setText("");
         agregarLog("[CLIENTES] Cliente registrado: " + nombre + " (CI: " + cedula + ")");
@@ -601,15 +644,15 @@ public class VentanaPrincipal extends JFrame {
         boolean modoSeguro = rbExclusionMutua.isSelected();
         agregarLog("\n==============================================================");
         agregarLog(">>> DISPARANDO SIMULACION CONCURRENTE EN LAS 3 VENTANILLAS");
-        agregarLog("Modo de ejecucion: " + (modoSeguro ? "EXCLUSION MUTUA (Seguro)" : "SIN EXCLUSION MUTUA (Inseguro)"));
+        agregarLog("Modo de ejecucion: " + (modoSeguro ? "EXCLUSION MUTUA (Seguro con Lock)" : "SIN EXCLUSION MUTUA (Inseguro - Carrera)"));
         agregarLog("==============================================================");
 
         int a1 = parseAsiento(txtAsientoV1);
         int a2 = parseAsiento(txtAsientoV2);
         int a3 = parseAsiento(txtAsientoV3);
-        String c1 = txtClienteV1.getText().trim();
-        String c2 = txtClienteV2.getText().trim();
-        String c3 = txtClienteV3.getText().trim();
+        String c1 = cmbClienteV1.getSelectedItem() != null ? cmbClienteV1.getSelectedItem().toString().trim() : "Usuario A";
+        String c2 = cmbClienteV2.getSelectedItem() != null ? cmbClienteV2.getSelectedItem().toString().trim() : "Usuario B";
+        String c3 = cmbClienteV3.getSelectedItem() != null ? cmbClienteV3.getSelectedItem().toString().trim() : "Usuario C";
 
         Thread t1 = new Thread(() -> {
             v1.procesarReserva(a1, c1, modoSeguro);
@@ -629,12 +672,13 @@ public class VentanaPrincipal extends JFrame {
         t3.start();
     }
 
-    private void operarReserva(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
+    private void operarReserva(JTextField txtAsiento, JComboBox<String> cmbCliente, Ventanilla vent) {
         String asientoStr = txtAsiento.getText().trim();
-        String cliente = txtCliente.getText().trim();
+        Object sel = cmbCliente.getSelectedItem();
+        String cliente = sel != null ? sel.toString().trim() : "";
 
         if (asientoStr.isEmpty() || cliente.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Complete el asiento y cliente.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Complete el asiento y seleccione un cliente.", "Atencion", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -650,12 +694,13 @@ public class VentanaPrincipal extends JFrame {
         }
     }
 
-    private void operarEliminacion(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
+    private void operarEliminacion(JTextField txtAsiento, JComboBox<String> cmbCliente, Ventanilla vent) {
         String asientoStr = txtAsiento.getText().trim();
-        String cliente = txtCliente.getText().trim();
+        Object sel = cmbCliente.getSelectedItem();
+        String cliente = sel != null ? sel.toString().trim() : "";
 
         if (asientoStr.isEmpty() || cliente.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Indique el asiento y cliente para eliminar.", "Atencion", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Indique el asiento y seleccione el cliente para eliminar.", "Atencion", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -670,9 +715,10 @@ public class VentanaPrincipal extends JFrame {
         }
     }
 
-    private void operarCambio(JTextField txtAsiento, JTextField txtCliente, Ventanilla vent) {
+    private void operarCambio(JTextField txtAsiento, JComboBox<String> cmbCliente, Ventanilla vent) {
         String actualStr = txtAsiento.getText().trim();
-        String cliente = txtCliente.getText().trim();
+        Object sel = cmbCliente.getSelectedItem();
+        String cliente = sel != null ? sel.toString().trim() : "";
         String nuevoStr = JOptionPane.showInputDialog(this, "Ingrese el nuevo asiento para '" + cliente + "':");
 
         if (nuevoStr == null || nuevoStr.trim().isEmpty()) {

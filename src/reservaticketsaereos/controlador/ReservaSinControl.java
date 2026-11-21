@@ -1,5 +1,6 @@
 package reservaticketsaereos.controlador;
 
+import java.util.function.Consumer;
 import reservaticketsaereos.modelo.Asiento;
 import reservaticketsaereos.modelo.Avion;
 
@@ -16,10 +17,23 @@ public class ReservaSinControl {
 
     private final Avion avion;
     private int colisionesDetectadas;
+    private Consumer<String> logger;
 
     public ReservaSinControl(Avion avion) {
         this.avion = avion;
         this.colisionesDetectadas = 0;
+        this.logger = System.out::println;
+    }
+
+    public void setLogger(Consumer<String> logger) {
+        this.logger = logger;
+    }
+
+    private void emitirLog(String mensaje) {
+        System.out.println(mensaje);
+        if (logger != null) {
+            logger.accept(mensaje);
+        }
     }
 
     /**
@@ -31,18 +45,18 @@ public class ReservaSinControl {
      * @return true si la ventanilla creyó haber reservado con éxito
      */
     public boolean reservar(int numeroAsiento, String cliente, String ventanilla) {
-        System.out.printf("[%s] Consulta disponibilidad del Asiento #%d para '%s'...\n", 
-                ventanilla, numeroAsiento, cliente);
+        emitirLog(String.format("[%s] Consulta disponibilidad del Asiento #%d para '%s'...",
+                ventanilla, numeroAsiento, cliente));
 
         // 1. Lectura del estado (Check)
         if (avion.isAsientoDisponible(numeroAsiento)) {
-            System.out.printf("[%s] Asiento #%d visible como LIBRE para '%s'. Procesando pago...\n", 
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] Asiento #%d visible como LIBRE para '%s'. Procesando transaccion...",
+                    ventanilla, numeroAsiento, cliente));
 
             try {
-                // 2. Simulación de retardo de red o procesamiento (50 a 150 ms)
-                // Durante esta pausa, otro hilo puede leer el asiento también como LIBRE.
-                long retardo = (long) (Math.random() * 100 + 50);
+                // 2. Simulación de retardo concurrente (1 a 2 segundos)
+                // Durante esta pausa critica, los otros hilos consultan y tambien ven el asiento LIBRE.
+                long retardo = (long) (Math.random() * 1000 + 1000);
                 Thread.sleep(retardo);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -54,17 +68,17 @@ public class ReservaSinControl {
             if (asientoActual != null && asientoActual.isOcupado()) {
                 // Si ya estaba ocupado al despertar, ¡ocurrió una colisión de carrera!
                 colisionesDetectadas++;
-                System.err.printf(">>> [¡ERROR DE CONCURRENCIA!] [%s] Sobreescribe Asiento #%d. Estaba reservado por '%s' y ahora se asigna a '%s'\n",
-                        ventanilla, numeroAsiento, asientoActual.getCliente(), cliente);
+                emitirLog(String.format(">>> [ERROR CONCURRENCIA] [%s] SOBREESCRIBE Asiento #%d. Estaba reservado por '%s' y se reasigna a '%s' (Condicion de carrera)",
+                        ventanilla, numeroAsiento, asientoActual.getCliente(), cliente));
             }
 
             avion.ocuparAsiento(numeroAsiento, cliente);
-            System.out.printf("[%s] Reserva COMPLETADA del Asiento #%d para '%s'.\n", 
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] Reserva COMPLETADA del Asiento #%d para '%s'.",
+                    ventanilla, numeroAsiento, cliente));
             return true;
         } else {
-            System.out.printf("[%s] Asiento #%d YA ESTÁ OCUPADO. Reserva denegada para '%s'.\n", 
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] Asiento #%d YA ESTA OCUPADO. Reserva denegada para '%s'.",
+                    ventanilla, numeroAsiento, cliente));
             return false;
         }
     }

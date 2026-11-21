@@ -11,6 +11,18 @@ import reservaticketsaereos.modelo.ColaEspera;
 import reservaticketsaereos.modelo.SolicitudReserva;
 import reservaticketsaereos.vista.VentanaPrincipal;
 
+/**
+ * Modulo: Integracion General, Orquestacion y Suite de Pruebas
+ * Responsable: Jhon Hector Molina Sarco
+ * 
+ * Integra los modulos desarrollados por los integrantes del equipo:
+ * - Modelo (Arianna Esteves)
+ * - Concurrencia sin control (Xavier Leon)
+ * - Exclusion mutua con ReentrantLock (Juan Marcillo)
+ * - Cancelacion y cambio de reservas (Natasha Mehler)
+ * - Ventanillas concurrentes y cola sincronizada (Jeremy Mero)
+ * - Interfaz grafica Swing (Nohelya Monar)
+ */
 public class ReservaTicketsAereos {
 
     public static void main(String[] args) {

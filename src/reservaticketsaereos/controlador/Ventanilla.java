@@ -35,6 +35,9 @@ public class Ventanilla {
 
     public void setLogger(Consumer<String> logger) {
         this.logger = logger;
+        if (gestorSeguro != null) gestorSeguro.setLogger(logger);
+        if (gestorInseguro != null) gestorInseguro.setLogger(logger);
+        if (gestionReservas != null) gestionReservas.setLogger(logger);
     }
 
     private void log(String msg) {
@@ -44,27 +47,22 @@ public class Ventanilla {
     }
 
     /**
-     * Ejecuta una operacion de reserva simulando tiempo de atencion de 1 a 3 segundos.
-     * Si el asiento esta ocupado y el modo es seguro, bloquea el hilo y espera liberacion.
+     * Ejecuta una operacion de reserva.
+     * En modo inseguro: compite sin exclusión mutua produciendo colisiones directas.
+     * En modo seguro: adquiere cerrojo atómico; si está ocupado, se bloquea en ColaEspera.
      */
     public boolean procesarReserva(int numeroAsiento, String cliente, boolean modoSeguro) {
-        try {
-            // Retardo aleatorio de 1 a 3 segundos como especifica el diagrama del docente
-            long retardo = (long) (Math.random() * 2000 + 1000);
-            log(String.format("[%s] Atendiendo a '%s' para Asiento #%d (procesando en %d ms)...",
-                    nombre, cliente, numeroAsiento, retardo));
-            Thread.sleep(retardo);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-
         if (!modoSeguro) {
-            // Modo Sin Exclusion Mutua: genera condiciones de carrera directamente
+            // Modo Sin Exclusion Mutua: dispara inmediatamente para asegurar solapamiento de carrera
+            log(String.format("[%s] Iniciando intento de reserva INSEGURA para Asiento #%d por '%s'...",
+                    nombre, numeroAsiento, cliente));
             return gestorInseguro.reservar(numeroAsiento, cliente, nombre);
         }
 
         // Modo Con Exclusion Mutua
+        log(String.format("[%s] Solicitando reserva SEGURA del Asiento #%d para '%s'...",
+                nombre, numeroAsiento, cliente));
+
         boolean exito = gestorSeguro.reservar(numeroAsiento, cliente, nombre);
 
         if (!exito) {
@@ -88,7 +86,7 @@ public class Ventanilla {
      */
     public boolean procesarEliminacion(int numeroAsiento, String cliente) {
         try {
-            long retardo = (long) (Math.random() * 1000 + 500);
+            long retardo = (long) (Math.random() * 800 + 400);
             Thread.sleep(retardo);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -96,7 +94,7 @@ public class Ventanilla {
 
         boolean exito = gestionReservas.cancelarReserva(numeroAsiento, cliente, nombre);
         if (exito) {
-            log(String.format("[%s] Asiento #%d liberado por '%s'. Verificando cola de espera...",
+            log(String.format("[%s] Asiento #%d cancelado y liberado por '%s'. Verificando cola de espera...",
                     nombre, numeroAsiento, cliente));
 
             // ASIGNACION AUTOMATICA: si hay un hilo esperando por este asiento, se le asigna inmediatamente
@@ -115,7 +113,7 @@ public class Ventanilla {
      */
     public boolean procesarCambio(int asientoActual, int nuevoAsiento, String cliente) {
         try {
-            long retardo = (long) (Math.random() * 1000 + 500);
+            long retardo = (long) (Math.random() * 800 + 400);
             Thread.sleep(retardo);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

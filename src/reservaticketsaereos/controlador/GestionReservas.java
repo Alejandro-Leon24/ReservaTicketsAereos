@@ -2,6 +2,7 @@ package reservaticketsaereos.controlador;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import reservaticketsaereos.modelo.Asiento;
 import reservaticketsaereos.modelo.Avion;
 
@@ -22,11 +23,24 @@ public class GestionReservas {
 
     private int totalCancelaciones;
     private int totalCambios;
+    private Consumer<String> logger;
 
     public GestionReservas(Avion avion) {
         this.avion = avion;
         this.totalCancelaciones = 0;
         this.totalCambios = 0;
+        this.logger = System.out::println;
+    }
+
+    public void setLogger(Consumer<String> logger) {
+        this.logger = logger;
+    }
+
+    private void emitirLog(String mensaje) {
+        System.out.println(mensaje);
+        if (logger != null) {
+            logger.accept(mensaje);
+        }
     }
 
     /**
@@ -34,35 +48,35 @@ public class GestionReservas {
      */
     public boolean cancelarReserva(int numeroAsiento, String cliente, String ventanilla) {
         synchronized (monitorConsistencia) {
-            System.out.printf("[%s] [GESTION] Solicitud de cancelacion: Asiento #%d por cliente '%s'...\n",
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] [GESTION] Solicitud de cancelacion: Asiento #%d por cliente '%s'...",
+                    ventanilla, numeroAsiento, cliente));
 
             Asiento asiento = avion.getAsiento(numeroAsiento);
 
             // Validacion 1: Existencia del asiento
             if (asiento == null) {
-                System.out.printf("[%s] [ERROR CANCELACION] El Asiento #%d no existe.\n", ventanilla, numeroAsiento);
+                emitirLog(String.format("[%s] [ERROR CANCELACION] El Asiento #%d no existe.", ventanilla, numeroAsiento));
                 return false;
             }
 
             // Validacion 2: Comprobar si esta ocupado
             if (!asiento.isOcupado()) {
-                System.out.printf("[%s] [ERROR CANCELACION] El Asiento #%d ya se encuentra LIBRE.\n", ventanilla, numeroAsiento);
+                emitirLog(String.format("[%s] [ERROR CANCELACION] El Asiento #%d ya se encuentra LIBRE.", ventanilla, numeroAsiento));
                 return false;
             }
 
             // Validacion 3: Comprobar titularidad del cliente
             if (!asiento.getCliente().equalsIgnoreCase(cliente.trim())) {
-                System.out.printf("[%s] [ERROR CANCELACION] El Asiento #%d pertenece a '%s', no a '%s'. Operacion rechazada.\n",
-                        ventanilla, numeroAsiento, asiento.getCliente(), cliente);
+                emitirLog(String.format("[%s] [ERROR CANCELACION] El Asiento #%d pertenece a '%s', no a '%s'. Operacion rechazada.",
+                        ventanilla, numeroAsiento, asiento.getCliente(), cliente));
                 return false;
             }
 
             // Operacion: Liberar asiento manteniendo consistencia
             avion.liberarAsiento(numeroAsiento);
             totalCancelaciones++;
-            System.out.printf("[%s] [EXITO] Asiento #%d cancelado y liberado correctamente para '%s'.\n",
-                    ventanilla, numeroAsiento, cliente);
+            emitirLog(String.format("[%s] [EXITO] Asiento #%d cancelado y liberado correctamente para '%s'.",
+                    ventanilla, numeroAsiento, cliente));
             return true;
         }
     }
@@ -72,12 +86,12 @@ public class GestionReservas {
      */
     public boolean cambiarAsiento(int asientoActual, int nuevoAsiento, String cliente, String ventanilla) {
         synchronized (monitorConsistencia) {
-            System.out.printf("[%s] [GESTION] Solicitud de cambio: Mover a '%s' del Asiento #%d al Asiento #%d...\n",
-                    ventanilla, cliente, asientoActual, nuevoAsiento);
+            emitirLog(String.format("[%s] [GESTION] Solicitud de cambio: Mover a '%s' del Asiento #%d al Asiento #%d...",
+                    ventanilla, cliente, asientoActual, nuevoAsiento));
 
             if (asientoActual == nuevoAsiento) {
-                System.out.printf("[%s] [ERROR CAMBIO] El nuevo asiento debe ser diferente al actual (#%d).\n",
-                        ventanilla, asientoActual);
+                emitirLog(String.format("[%s] [ERROR CAMBIO] El nuevo asiento debe ser diferente al actual (#%d).",
+                        ventanilla, asientoActual));
                 return false;
             }
 
@@ -86,22 +100,22 @@ public class GestionReservas {
 
             // Validacion 1: Existencia de ambos asientos
             if (origen == null || destino == null) {
-                System.out.printf("[%s] [ERROR CAMBIO] Asiento(s) invalido(s). Rango valido: 1 a %d.\n",
-                        ventanilla, Avion.TOTAL_ASIENTOS);
+                emitirLog(String.format("[%s] [ERROR CAMBIO] Asiento(s) invalido(s). Rango valido: 1 a %d.",
+                        ventanilla, Avion.TOTAL_ASIENTOS));
                 return false;
             }
 
             // Validacion 2: Validar que el cliente tenga el asiento origen
             if (!origen.isOcupado() || !origen.getCliente().equalsIgnoreCase(cliente.trim())) {
-                System.out.printf("[%s] [ERROR CAMBIO] El cliente '%s' no posee la reserva del Asiento #%d.\n",
-                        ventanilla, cliente, asientoActual);
+                emitirLog(String.format("[%s] [ERROR CAMBIO] El cliente '%s' no posee la reserva del Asiento #%d.",
+                        ventanilla, cliente, asientoActual));
                 return false;
             }
 
             // Validacion 3: Validar que el asiento destino este disponible
             if (destino.isOcupado()) {
-                System.out.printf("[%s] [ERROR CAMBIO] El nuevo Asiento #%d ya esta ocupado por '%s'. Cambio denegado.\n",
-                        ventanilla, nuevoAsiento, destino.getCliente());
+                emitirLog(String.format("[%s] [ERROR CAMBIO] El nuevo Asiento #%d ya esta ocupado por '%s'. Cambio denegado.",
+                        ventanilla, nuevoAsiento, destino.getCliente()));
                 return false;
             }
 
@@ -110,8 +124,8 @@ public class GestionReservas {
             avion.ocuparAsiento(nuevoAsiento, cliente.trim());
             totalCambios++;
 
-            System.out.printf("[%s] [EXITO] Asiento cambiado con exito. '%s' ahora ocupa el Asiento #%d (Asiento #%d quedo libre).\n",
-                    ventanilla, cliente, nuevoAsiento, asientoActual);
+            emitirLog(String.format("[%s] [EXITO] Asiento cambiado con exito. '%s' ahora ocupa el Asiento #%d (Asiento #%d quedo libre).",
+                    ventanilla, cliente, nuevoAsiento, asientoActual));
             return true;
         }
     }
